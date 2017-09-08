@@ -4,6 +4,7 @@
 #include "async_ev.h"
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/uio.h>
 #include <netinet/tcp.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -222,6 +223,9 @@ public:
     void CloseFd(uint64_t id, int fd){
         AsyncNetOp* op = new AsyncNetOp(this, fd, 2);
         m_handler.Notify((uint32_t)fd, this, op);
+    };
+    int Notify(uint32_t fd, EvCallBack* back ,void* ptr){
+        return m_handler.Notify(fd, back, ptr);
     };
 private:
     void AddAcceptFd(AsyncNetOp* op){

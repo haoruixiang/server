@@ -6,7 +6,10 @@
 #include <map>
 #include <mutex>
 #include <thread>
+#ifdef  USE_EVENTFD
 #include <sys/eventfd.h>
+#else
+#endif
 #include <glog/logging.h>
 
 class EvCallBack
@@ -44,10 +47,17 @@ public:
     };
     void Start() {
         m_loop = ev_loop_new(0);
-        m_eventfd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK | EFD_SEMAPHORE);
+        m_eventfd[0] = -1; //re
+        m_eventfd[1] = -1;
+#ifdef USE_EVENTFD
+        m_eventfd[0] = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK | EFD_SEMAPHORE);
+        m_eventfd[1] = m_eventfd[0];
+#else
+        pipe(m_eventfd);
+#endif
         ev_init(&m_watcher, NotifyCallBack);
         m_watcher.data = this;
-        ev_io_set(&m_watcher, m_eventfd, EV_READ);
+        ev_io_set(&m_watcher, m_eventfd[0], EV_READ);
         ev_io_start(m_loop, &m_watcher);
         m_worker = new std::thread([&]() mutable { this->RunLoop();});
     };
@@ -66,7 +76,7 @@ public:
             break;
         }while(true);
         uint64_t numadded64 = 1;
-        ssize_t bytes_written = ::write(m_eventfd, &numadded64, sizeof(numadded64));
+        ssize_t bytes_written = ::write(m_eventfd[1], &numadded64, sizeof(numadded64));
         if (bytes_written != sizeof(numadded64)){
         }
         return 0;
@@ -115,14 +125,14 @@ private:
             m++;
         }while(true);
         uint64_t value[m];
-        if (m_eventfd >= 0) {
-            ::read(m_eventfd, &value, sizeof(value));
+        if (m_eventfd[0] >= 0) {
+            ::read(m_eventfd[0], &value, sizeof(value));
         }
     };
     std::thread*        m_worker;
     ev_io               m_watcher;
     struct ev_loop*     m_loop;
-    int                 m_eventfd;
+    int                 m_eventfd[2];
     std::mutex          m_mtx;
     EvQueueData**       m_queue;
     uint32_t		m_queue_max;
