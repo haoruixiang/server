@@ -7,6 +7,7 @@
 #include <mutex>
 #include <thread>
 #include <sys/eventfd.h>
+#include <glog/logging.h>
 
 class EvCallBack
 {
@@ -132,70 +133,74 @@ private:
 
 class AsyncEvHandler :public EvCallBack
 {
-    public:
-        AsyncEvHandler(){
-            m_iter_cnt = 0;
-            for (uint32_t i = 0; i< 1024; i++){
+public:
+    AsyncEvHandler(){
+        m_iter_cnt = 0;
+        for (uint32_t i = 0; i< 1024; i++){
+            m_iters[i] = 0;
+        }
+    };
+    virtual ~AsyncEvHandler(){
+        for (uint32_t i = 0; i< 1024; i++){
+            if (m_iters[i]){
+                m_iters[i]->Notify(this, m_iters[i]);
                 m_iters[i] = 0;
             }
-        };
-        virtual ~AsyncEvHandler(){
-            for (uint32_t i = 0; i< 1024; i++){
-                if (m_iters[i]){
-                    m_iters[i]->Notify(this, m_iters[i]);
-                    m_iters[i] = 0;
-                }
-            }
-        };
-        virtual void CallBack(void * data){
-            HEvIter * v = (HEvIter*)data;
-            if (v){
-                ev_break(v->Loop());
-                delete v;
-            }
-        };
-        void Start(uint32_t max, int max_queue = 12800){
-            m_iter_cnt = max >1024 ? 1024:max;
-            for (uint32_t i = 0; i< m_iter_cnt; i++){
-                m_iters[i] = new HEvIter(max_queue);
-                m_iters[i]->Start();
-            }
-        };
-        int Notify(uint32_t fd, EvCallBack* back, void * data){
-            uint32_t cid = fd % m_iter_cnt;
-            if (m_iters[cid]){
-                return m_iters[cid]->Notify(back, data);
-            }
-            return -1;
-        };
-        struct ev_loop* Loop(uint32_t fd){
-            uint32_t cid = fd % m_iter_cnt;
-            if (m_iters[cid]){
-                return m_iters[cid]->Loop();
-            }
-            return 0;
-        };
-        void * Context(uint32_t fd, uint64_t id){
-            uint32_t cid = fd % m_iter_cnt;
-            if (m_iters[cid]){
-                return m_iters[cid]->Context(id);
-            }
-            return 0;
-        };
-        void SetContext(uint32_t fd, uint64_t id, void* p){
-            uint32_t cid = fd % m_iter_cnt;
-            if (m_iters[cid]){
-                m_iters[cid]->SetContext(id, p);
-            }
-        };
-        void DelContext(uint32_t fd, uint64_t id){
-            uint32_t cid = fd % m_iter_cnt;
-            if (m_iters[cid]){
-                m_iters[cid]->DelContext(id);
-            }
-        };
-        HEvIter*    m_iters[1024];
-        uint32_t	m_iter_cnt;
+        }
+    };
+    virtual void CallBack(void * data){
+        HEvIter * v = (HEvIter*)data;
+        if (v){
+            ev_break(v->Loop());
+            delete v;
+        }
+    };
+    void Start(uint32_t max, int max_queue = 12800){
+        if (m_iter_cnt>0){
+            return;
+        }
+        m_iter_cnt = max >1024 ? 1024:max;
+        for (uint32_t i = 0; i< m_iter_cnt; i++){
+            m_iters[i] = new HEvIter(max_queue);
+            m_iters[i]->Start();
+        }
+        //LOG(INFO)<<"Start:"<<max<<" ok";
+    };
+    int Notify(uint32_t fd, EvCallBack* back, void * data){
+        uint32_t cid = fd % m_iter_cnt;
+        if (m_iters[cid]){
+            return m_iters[cid]->Notify(back, data);
+        }
+        return -1;
+    };
+    struct ev_loop* Loop(uint32_t fd){
+        uint32_t cid = fd % m_iter_cnt;
+        if (m_iters[cid]){
+            return m_iters[cid]->Loop();
+        }
+        return 0;
+    };
+    void * Context(uint32_t fd, uint64_t id){
+        uint32_t cid = fd % m_iter_cnt;
+        if (m_iters[cid]){
+            return m_iters[cid]->Context(id);
+        }
+        return 0;
+    };
+    void SetContext(uint32_t fd, uint64_t id, void* p){
+        uint32_t cid = fd % m_iter_cnt;
+        if (m_iters[cid]){
+            m_iters[cid]->SetContext(id, p);
+        }
+    };
+    void DelContext(uint32_t fd, uint64_t id){
+        uint32_t cid = fd % m_iter_cnt;
+        if (m_iters[cid]){
+            m_iters[cid]->DelContext(id);
+        }
+    };
+    HEvIter*    m_iters[1024];
+    uint32_t	m_iter_cnt;
 };
 
 #endif
