@@ -120,6 +120,7 @@ public:
         m_parent = p;
         m_fd = fd;
         m_op = op;
+        m_status = 0;
     };
     virtual ~AsyncNetOp(){
         std::list<HNetSendBuff*>::iterator it;
@@ -138,12 +139,14 @@ public:
     HNetBuff*       m_read_buff;
     std::list<HNetSendBuff*> m_send_buff;
     AsyncNet*	    m_parent;
+    int             m_status;
 };
 
 class AsyncNet :public EvCallBack
 {
 public:
     AsyncNet(){
+        m_cid = 0;
         m_op[0] = &AsyncNet::AddAcceptFd;
         m_op[1] = &AsyncNet::AddSendMsg;
         m_op[2] = &AsyncNet::AddCloseFd;
@@ -195,11 +198,12 @@ public:
             return -1;
         }
         m_handler.Start(1);
-        AsyncNetOp* op = new AsyncNetOp(this, fd, 3);
+        AsyncNetOp* op = new AsyncNetOp(this, fd, 3, m_cid);
         m_handler.Notify((uint32_t)fd, this, op);
         if (m_back){
-            m_back->OnConnect(0, fd);
+            m_back->OnConnect(m_cid, fd);
         }
+        m_cid++;
         return 0;
     };
     virtual void CallBack(void * data){
@@ -211,7 +215,9 @@ public:
         HNetSendBuff * buff = new HNetSendBuff();
         buff->Swap(msg);
         op->m_send_buff.push_back(buff);
-        m_handler.Notify((uint32_t)fd, this, op);
+        if (m_handler.Notify((uint32_t)fd, this, op)<0){
+            LOG(ERROR)<<"Notify:"<<fd<<" id:"<<id<<" false";
+        }
     };
     void CloseFd(uint64_t id, int fd){
         AsyncNetOp* op = new AsyncNetOp(this, fd, 2);
@@ -237,14 +243,26 @@ private:
         }
         delete op;
     };
+    void CloseOp(AsyncNetOp* op){
+        LOG(ERROR)<<"CloseOp:"<<op;
+        if (op){
+            ev_io_stop(m_handler.Loop((uint32_t)op->m_fd), &(op->m_rwatcher));
+            ev_io_stop(m_handler.Loop((uint32_t)op->m_fd), &(op->m_swatcher));
+            m_handler.DelContext(op->m_id, op->m_fd);
+            delete op;
+        }
+    };
     void AddSendMsg(AsyncNetOp* op){
         AsyncNetOp * rop = (AsyncNetOp*)m_handler.Context(op->m_id, op->m_fd);
         if (rop && op->m_fd == rop->m_fd && op->m_id == rop->m_id){
-            if (rop->m_send_buff.size()<=0){
+            //LOG(INFO)<<"AddSendMsg:"<<rop<<" status:"<<rop->m_status<<" fd:"<<op->m_fd<<" id:"<<op->m_id;
+            if (rop->m_status == 0){
                 ev_init(&(rop->m_swatcher), WriteCallBack);
                 rop->m_swatcher.data = rop;
                 ev_io_set(&(rop->m_swatcher), rop->m_fd, EV_WRITE);
                 ev_io_start(m_handler.Loop((uint32_t)(rop->m_fd)), &(rop->m_swatcher));
+                rop->m_status = 1;
+                //LOG(INFO)<<"AddSendMsg start loop";
             }
             HNetSendBuff * buff = op->m_send_buff.front();
             op->m_send_buff.pop_front();
@@ -262,6 +280,8 @@ private:
         ev_io_set(&(op->m_swatcher), op->m_fd, EV_WRITE);
         ev_io_start(m_handler.Loop((uint32_t)(op->m_fd)), &(op->m_swatcher));
         m_handler.SetContext(op->m_id, op->m_fd, op); //register
+        op->m_status = 1;
+        //LOG(INFO)<<"AddReadWrite:"<<op<<" id:"<<op->m_id<<" fd:"<<op->m_fd;
     };
     void Accept(AsyncNetOp* op){
         if (!op){return;}
@@ -289,7 +309,8 @@ private:
         int rt = op->m_read_buff->ReadFd(op->m_fd);
         if (rt <= 0){
             if (errno != EAGAIN || errno != EWOULDBLOCK || rt == -8888){
-                CloseFd(op->m_id, op->m_fd);
+                LOG(ERROR)<<"read error:"<<errno<<" "<<op;
+                CloseOp(op); 
                 return ;
             }
         }
@@ -303,6 +324,7 @@ private:
         do{
             if (op->m_send_buff.size()<=0){
                 ev_io_stop(m_handler.Loop((uint32_t)(op->m_fd)), &(op->m_swatcher));
+                op->m_status = 0;
                 break;
             }
             HNetSendBuff* f = op->m_send_buff.front();
@@ -317,11 +339,13 @@ private:
             if (rt < 0) {
                 if (errno != EWOULDBLOCK) {
                     if (errno == EPIPE || errno == ECONNRESET){
-                        CloseFd(op->m_id, op->m_fd);
+                        LOG(ERROR)<<"write error:"<<errno<<" "<<op;
+                        CloseOp(op);
                         return ;
                     }
                 }
             } else {
+                //LOG(INFO)<<"Write fd:"<<op->m_fd<<" rt:"<<rt;
                 f->send_len += rt;
                 if (rt == 0){
                     return ;
@@ -377,6 +401,7 @@ private:
     };
     AsyncEvHandler	m_handler;
     AsyncNetCallBack * m_back;
+    uint64_t        m_cid;
     void            (AsyncNet::*m_op[5])(AsyncNetOp*); //void (Test::*add[2])();
 };
 
