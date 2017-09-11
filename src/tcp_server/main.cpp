@@ -18,7 +18,7 @@ int main(int agrv, char** agrc)
     AMQP_CONFIG config[2];
     config[0].m_ip = "127.0.0.1";
     config[0].m_port = 5672;
-    config[0].m_username = "guest";
+    config[0].m_username = "guesta";
     config[0].m_passwd = "guest";
     config[0].m_vhost = "/";
     config[0].m_ex = "tv";
@@ -33,8 +33,8 @@ int main(int agrv, char** agrc)
     AmqpConfig cfg;
     cfg.m_conf.push_back(&config[0]);
     cfg.m_conf.push_back(&config[1]);
-    AmqpHandler mq(&cfg);
-    mq.Login();
+    AmqpHandler mq;
+    mq.Login(&cfg, 0x100);
     sleep(200);
     return 0;
 }
