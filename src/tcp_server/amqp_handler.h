@@ -96,20 +96,41 @@ class AmqpConn :public AMQP::ConnectionHandler, public AmqpChannelBack
 {
 public:
     AmqpConn(AmqpCallBack *p, AMQP_CONFIG* conf, int fd, uint64_t id){
+        m_connection = 0;
         m_back = p;
-        m_fd = fd;
-        m_id = id;
-        m_connection = new AMQP::Connection(this, AMQP::Login(conf->m_username.c_str(), conf->m_passwd.c_str()), conf->m_vhost.c_str());
-        for (size_t i=0; i<conf->m_queue.size(); i++){
-            AmqpChannel * channel = new AmqpChannel(m_connection, conf->m_queue[i], this, conf->m_ex);
-            m_channel.push_back(channel);
-        }
+        m_conf = conf;
+        m_connect_time = time(0);
+        Init(fd, id);
     };
     ~AmqpConn(){
+        Clear();
+    };
+    void Clear(){
         for (size_t i=0; i<m_channel.size(); i++){
             delete m_channel[i];
         }
-        delete m_connection;
+        if (m_connection){
+            delete m_connection;
+        }
+        m_connection = 0;
+        m_channel.clear();
+    };
+    void Init(int fd, uint64_t id){
+        Clear();
+        m_fd = fd;
+        m_id = id;
+        m_connection = new AMQP::Connection(this, AMQP::Login(m_conf->m_username.c_str(), m_conf->m_passwd.c_str()), m_conf->m_vhost.c_str());
+        for (size_t i=0; i<m_conf->m_queue.size(); i++){
+            AmqpChannel * channel = new AmqpChannel(m_connection, m_conf->m_queue[i], this, m_conf->m_ex);
+            m_channel.push_back(channel);
+        }
+    };
+    virtual uint16_t onNegotiate(AMQP::Connection *connection, uint16_t interval){
+        LOG(INFO)<<"onNegotiate:"<<connection<<" interval:"<<interval;
+        return interval;
+    }
+    virtual void onHeartbeat(AMQP::Connection *connection) {
+        //LOG(INFO)<<"onHeartbeat:"<<connection->heartbeat();
     };
     virtual void OnMessage(const AMQP::Message &message, uint64_t deliveryTag, bool redelivered){
         if (m_back){
@@ -138,7 +159,9 @@ public:
     AMQP::Connection  *m_connection;
     std::vector<AmqpChannel*> m_channel;
     AmqpCallBack*    m_back;
-    AMQP_CONFIG*     m_cfg;
+    AMQP_CONFIG*     m_conf;
+    time_t           m_read_time;
+    time_t           m_connect_time;
 };
 
 class AmqpHandler :public AsyncNetCallBack, public AmqpCallBack
@@ -181,9 +204,11 @@ private:
         m_fd = fd;
     };
     virtual size_t ReadMsgOk(const char* buff, size_t len, uint64_t id, int fd){
+        LOG(INFO)<<"ReadMsgOk:"<<len<<" id:"<<id<<" fd:"<<fd;
         std::map<uint64_t, AmqpConn*>::iterator it = m_mmp.find(id);
         if (it != m_mmp.end()){
-            LOG(INFO)<<"Connection:"<<it->second->m_connection<<" parse:"<<len<<" fd:"<<fd<<" id:"<<id;
+            it->second->m_read_time = time(0);
+            LOG(INFO)<<"Connection:"<<it->second->m_connection<<" parse:"<<len<<" fd:"<<fd<<" id:"<<id<<" t:"<<it->second->m_read_time;
             return it->second->m_connection->parse(buff, len);
         }else{
             LOG(ERROR)<<"ReadMsgOk close:"<<fd;
@@ -192,7 +217,12 @@ private:
         return 0;
     };
     virtual void CloseConn(uint64_t id, int fd){
-        LOG(ERROR)<<"CloseConn fd:"<<fd;
+        LOG(ERROR)<<"CloseConn fd:"<<fd<<" id:"<<id;
+        std::map<uint64_t, AmqpConn*>::iterator ct = m_mmp.find(id);
+        if (ct != m_mmp.end()){
+            m_losts.push_back(ct->second);
+        }
+        m_mmp.erase(id);
         close(fd);
         m_id = 0;
         m_fd = -1;
@@ -202,11 +232,44 @@ private:
         m_handler.SendMsg(msg, id, fd);
     };
     virtual void OnMessage(AmqpConn* ch, const AMQP::Message &message, uint64_t deliveryTag, bool redelivered){
-        LOG(INFO)<<"OnMessage:"<<ch<<" size:"<<message.bodySize()<<" tag:"<<deliveryTag<<" redelivered:"<<redelivered<<" "<<message.body();
+        LOG(INFO)<<"OnMessage:"<<ch<<" size:"<<message.bodySize()<<" tag:"<<deliveryTag<<" redelivered:"<<redelivered<<" "<<std::string(message.body(),message.bodySize());
+    };
+    virtual void OnTimeOut(){
+        LOG(INFO)<<"OnTimeOut";
+        time_t t = time(0);
+        std::map<uint64_t, AmqpConn*>::iterator it = m_mmp.begin();
+        for (;it != m_mmp.end(); it++){
+            if (t - it->second->m_read_time > 10){
+                m_handler.CloseFd(it->second->m_id, it->second->m_fd);
+                LOG(INFO)<<"time out close fd:"<<it->second->m_fd<<" id:"<<it->second->m_id<<" time:"<<it->second->m_read_time;
+                continue;
+            }
+        }
+        do{
+            bool b = true;
+            std::list<AmqpConn*>::iterator ct = m_losts.begin();
+            for (; ct != m_losts.end(); ct++){
+                if (t - (*ct)->m_connect_time >3){
+                    (*ct)->m_connect_time = t;
+                    if (m_handler.ConnectServer(this, (*ct)->m_conf->m_ip.c_str(), (*ct)->m_conf->m_port)<0){
+                        continue;
+                    }
+                    (*ct)->Init(m_fd, m_id);
+                    m_mmp[m_id] = (*ct);
+                    b = false;
+                    m_losts.erase(ct);
+                    break;
+                }
+            }
+            if (b){
+                break;
+            }
+        }while(true);
     };
     AsyncNet         m_handler;
     AmqpConfig*      m_config;
     std::map<uint64_t, AmqpConn*>  m_mmp;
+    std::list<AmqpConn*>    m_losts;
     uint64_t         m_id;
     int              m_fd;
 };
