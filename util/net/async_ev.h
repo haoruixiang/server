@@ -22,6 +22,14 @@ private:
     unsigned char  m_version;
 };
 
+class EvTimeOutCallBack
+{
+public:
+    EvTimeOutCallBack(){};
+    virtual ~EvTimeOutCallBack(){};
+    virtual void TimeCallBack(){};
+};
+
 class EvQueueData
 {
 public:
@@ -34,9 +42,11 @@ public:
 class HEvIter
 {
 public:
-    HEvIter(int queue_max = 12800){
+    HEvIter(float timeout = 1.0, EvTimeOutCallBack* b = 0,int queue_max = 12800){
         m_read_id = 0;
         m_write_id = 1;
+        m_time_back = b;
+        m_time_out = timeout;
         m_queue_max = queue_max;
         m_queue = (EvQueueData**)malloc (queue_max * sizeof(EvQueueData*));
         for (int i=0; i<queue_max; i++){
@@ -59,6 +69,10 @@ public:
         m_watcher.data = this;
         ev_io_set(&m_watcher, m_eventfd[0], EV_READ);
         ev_io_start(m_loop, &m_watcher);
+        ev_init(&m_twatcher, TimeOutCallBack);
+        m_twatcher.data = this;
+        ev_timer_set(&m_twatcher, m_time_out, 1);
+        ev_timer_start(m_loop, &m_twatcher);
         m_worker = new std::thread([&]() mutable { this->RunLoop();});
     };
     int Notify(EvCallBack *back, void * data){
@@ -103,8 +117,19 @@ private:
             p->DoNotify();
         }
     };
+    static void TimeOutCallBack(EV_P_ ev_timer *w, int revents){
+        HEvIter * p = (HEvIter*)(w->data);
+        if (p){
+            p->DoTimeOut();
+        }
+    };
     void RunLoop(){
         ev_run(m_loop, 0);
+    };
+    void DoTimeOut(){
+        if (m_time_back){
+            m_time_back->TimeCallBack();
+        }
     };
     void DoNotify(){
         int m = 0;
@@ -131,11 +156,14 @@ private:
     };
     std::thread*        m_worker;
     ev_io               m_watcher;
+    ev_timer            m_twatcher;
     struct ev_loop*     m_loop;
     int                 m_eventfd[2];
     std::mutex          m_mtx;
     EvQueueData**       m_queue;
-    uint32_t		m_queue_max;
+    EvTimeOutCallBack*  m_time_back;
+    float               m_time_out;
+    uint32_t		    m_queue_max;
     volatile uint64_t	m_read_id;
     volatile uint64_t	m_write_id;
     std::map<uint64_t, void*> m_ptr;
@@ -165,16 +193,15 @@ public:
             delete v;
         }
     };
-    void Start(uint32_t max, int max_queue = 12800){
+    void Start(uint32_t max, float timeout = 1.0, EvTimeOutCallBack* p = 0, int max_queue = 12800){
         if (m_iter_cnt>0){
             return;
         }
         m_iter_cnt = max >1024 ? 1024:max;
         for (uint32_t i = 0; i< m_iter_cnt; i++){
-            m_iters[i] = new HEvIter(max_queue);
+            m_iters[i] = new HEvIter(timeout,p,max_queue);
             m_iters[i]->Start();
         }
-        //LOG(INFO)<<"Start:"<<max<<" ok";
     };
     int Notify(uint32_t fd, EvCallBack* back, void * data){
         uint32_t cid = fd % m_iter_cnt;

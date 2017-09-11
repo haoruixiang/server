@@ -98,6 +98,7 @@ public:
     virtual size_t ReadMsgOk(const char* buff, size_t len, uint64_t id, int fd){return 0;};
     virtual void CloseConn(uint64_t id, int fd){};
     virtual void OnConnect(uint64_t id, int fd){};
+    virtual void OnTimeOut(){};
 };
 
 class HNetSendBuff
@@ -143,7 +144,7 @@ public:
     int             m_status;
 };
 
-class AsyncNet :public EvCallBack
+class AsyncNet :public EvCallBack , public EvTimeOutCallBack
 {
 public:
     AsyncNet(){
@@ -198,7 +199,7 @@ public:
             close(fd);
             return -1;
         }
-        m_handler.Start(1);
+        m_handler.Start(1, 1.0, this);
         AsyncNetOp* op = new AsyncNetOp(this, fd, 3, m_cid);
         m_handler.Notify((uint32_t)fd, this, op);
         if (m_back){
@@ -211,6 +212,11 @@ public:
         AsyncNetOp * v = (AsyncNetOp*)data;
         (this->*m_op[v->m_op])(v);
     };
+    virtual void TimeCallBack(){
+        if (m_back){
+            m_back->OnTimeOut();
+        }
+    };
     void  SendMsg(std::string & msg, uint64_t id, int fd){
         AsyncNetOp* op = new AsyncNetOp(this, fd, 1, id);
         HNetSendBuff * buff = new HNetSendBuff();
@@ -221,7 +227,7 @@ public:
         }
     };
     void CloseFd(uint64_t id, int fd){
-        AsyncNetOp* op = new AsyncNetOp(this, fd, 2);
+        AsyncNetOp* op = new AsyncNetOp(this, fd, 2, id);
         m_handler.Notify((uint32_t)fd, this, op);
     };
     int Notify(uint32_t fd, EvCallBack* back ,void* ptr){
@@ -239,11 +245,11 @@ private:
         if (rop && rop->m_fd == op->m_fd && rop->m_id == op->m_id){
             ev_io_stop(m_handler.Loop((uint32_t)rop->m_fd), &(rop->m_rwatcher));
             ev_io_stop(m_handler.Loop((uint32_t)rop->m_fd), &(rop->m_swatcher));
+            m_handler.DelContext(rop->m_id, rop->m_fd);
+            if (m_back){
+                m_back->CloseConn(rop->m_id, rop->m_fd);
+            }
             delete rop;
-        }
-        m_handler.DelContext(op->m_id, op->m_fd);
-        if (m_back){
-            m_back->CloseConn(op->m_id, op->m_fd);
         }
         delete op;
     };
@@ -253,6 +259,9 @@ private:
             ev_io_stop(m_handler.Loop((uint32_t)op->m_fd), &(op->m_rwatcher));
             ev_io_stop(m_handler.Loop((uint32_t)op->m_fd), &(op->m_swatcher));
             m_handler.DelContext(op->m_id, op->m_fd);
+            if (m_back){
+                m_back->CloseConn(op->m_id, op->m_fd);
+            }
             delete op;
         }
     };
