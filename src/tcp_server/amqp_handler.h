@@ -202,7 +202,7 @@ private:
         m_handler.SendMsg(msg, id, fd);
     };
     virtual void OnMessage(AmqpConn* ch, const AMQP::Message &message, uint64_t deliveryTag, bool redelivered){
-        LOG(INFO)<<"OnMessage:"<<ch<<" size:"<<message.message().size()<<" tag:"<<deliveryTag<<" redelivered:"<<redelivered<<" "<<message.message();
+        LOG(INFO)<<"OnMessage:"<<ch<<" size:"<<message.bodySize()<<" tag:"<<deliveryTag<<" redelivered:"<<redelivered<<" "<<message.body();
     };
     AsyncNet         m_handler;
     AmqpConfig*      m_config;

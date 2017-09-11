@@ -16,14 +16,14 @@ int main(int agrv, char** agrc)
     queue[1].m_bind_keys.push_back(std::string("test_key"));
     queue[1].m_bind_keys.push_back(std::string("test_key2"));
     AMQP_CONFIG config[2];
-    config[0].m_ip = "172.16.0.56";
+    config[0].m_ip = "127.0.0.1";
     config[0].m_port = 5672;
     config[0].m_username = "guest";
     config[0].m_passwd = "guest";
     config[0].m_vhost = "/";
     config[0].m_ex = "tv";
     config[0].m_queue.push_back(&queue[0]);
-    config[1].m_ip = "172.16.0.56";
+    config[1].m_ip = "127.0.0.1";
     config[1].m_port = 5672;
     config[1].m_username = "guest";
     config[1].m_passwd = "guest";
