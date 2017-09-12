@@ -55,7 +55,7 @@ public:
     };
     virtual ~HEvIter(){
     };
-    void Start() {
+    void Start(int time_out) {
         m_loop = ev_loop_new(0);
         m_eventfd[0] = -1; //re
         m_eventfd[1] = -1;
@@ -69,10 +69,12 @@ public:
         m_watcher.data = this;
         ev_io_set(&m_watcher, m_eventfd[0], EV_READ);
         ev_io_start(m_loop, &m_watcher);
-        ev_init(&m_twatcher, TimeOutCallBack);
-        m_twatcher.data = this;
-        ev_timer_set(&m_twatcher, m_time_out, 1);
-        ev_timer_start(m_loop, &m_twatcher);
+        if (time_out == 0){
+            ev_init(&m_twatcher, TimeOutCallBack);
+            m_twatcher.data = this;
+            ev_timer_set(&m_twatcher, m_time_out, 1);
+            ev_timer_start(m_loop, &m_twatcher);
+        }
         m_worker = new std::thread([&]() mutable { this->RunLoop();});
     };
     int Notify(EvCallBack *back, void * data){
@@ -200,7 +202,7 @@ public:
         m_iter_cnt = max >1024 ? 1024:max;
         for (uint32_t i = 0; i< m_iter_cnt; i++){
             m_iters[i] = new HEvIter(timeout,p,max_queue);
-            m_iters[i]->Start();
+            m_iters[i]->Start(i);
         }
     };
     int Notify(uint32_t fd, EvCallBack* back, void * data){
