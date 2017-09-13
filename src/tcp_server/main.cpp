@@ -8,7 +8,7 @@ int main(int agrv, char** agrc)
     enableCoredump();
     //NetServerHandler s;
     //s.Start("172.16.0.56", 8899, 4, 4);
-    AMQP_QUEUE queue[2];
+    /*AMQP_QUEUE queue[2];
     queue[0].m_queue = "a_test1";
     queue[0].m_bind_keys.push_back(std::string("test_key"));
     queue[0].m_bind_keys.push_back(std::string("test_key1"));
@@ -34,7 +34,7 @@ int main(int agrv, char** agrc)
     cfg.m_conf.push_back(&config[0]);
     cfg.m_conf.push_back(&config[1]);
     AmqpHandler mq;
-    mq.Login(&cfg, 0x100);
+    mq.Login(&cfg, 0x100);*/
     sleep(200);
     return 0;
 }
