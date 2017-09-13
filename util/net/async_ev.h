@@ -175,18 +175,12 @@ class AsyncEvHandler :public EvCallBack
 {
 public:
     AsyncEvHandler(){
-        m_iter_cnt = 0;
-        for (uint32_t i = 0; i< 1024; i++){
-            m_iters[i] = 0;
-        }
     };
     virtual ~AsyncEvHandler(){
-        for (uint32_t i = 0; i< 1024; i++){
-            if (m_iters[i]){
+        for (size_t i = 0; i< m_iters.size(); i++){
                 m_iters[i]->Notify(this, m_iters[i]);
-                m_iters[i] = 0;
-            }
         }
+        m_iters.clear();
     };
     virtual void CallBack(void * data){
         HEvIter * v = (HEvIter*)data;
@@ -196,50 +190,26 @@ public:
         }
     };
     void Start(uint32_t max, float timeout = 1.0, EvTimeOutCallBack* p = 0, int max_queue = 12800){
-        if (m_iter_cnt>0){
-            return;
-        }
-        m_iter_cnt = max >1024 ? 1024:max;
-        for (uint32_t i = 0; i< m_iter_cnt; i++){
-            m_iters[i] = new HEvIter(timeout,p,max_queue);
-            m_iters[i]->Start(i);
+        for (uint32_t i = 0; i< max; i++){
+            m_iters.push_back(new HEvIter(timeout,p,max_queue));
         }
     };
     int Notify(uint32_t fd, EvCallBack* back, void * data){
-        uint32_t cid = fd % m_iter_cnt;
-        if (m_iters[cid]){
-            return m_iters[cid]->Notify(back, data);
-        }
-        return -1;
+        return m_iters[fd%m_iters.size()]->Notify(back, data);
     };
     struct ev_loop* Loop(uint32_t fd){
-        uint32_t cid = fd % m_iter_cnt;
-        if (m_iters[cid]){
-            return m_iters[cid]->Loop();
-        }
-        return 0;
+        return m_iters[fd%m_iters.size()]->Loop();
     };
     void * Context(uint32_t fd, uint64_t id){
-        uint32_t cid = fd % m_iter_cnt;
-        if (m_iters[cid]){
-            return m_iters[cid]->Context(id);
-        }
-        return 0;
+        return m_iters[fd%m_iters.size()]->Context(id);
     };
     void SetContext(uint32_t fd, uint64_t id, void* p){
-        uint32_t cid = fd % m_iter_cnt;
-        if (m_iters[cid]){
-            m_iters[cid]->SetContext(id, p);
-        }
+        m_iters[fd%m_iters.size()]->SetContext(id, p);
     };
     void DelContext(uint32_t fd, uint64_t id){
-        uint32_t cid = fd % m_iter_cnt;
-        if (m_iters[cid]){
-            m_iters[cid]->DelContext(id);
-        }
+        m_iters[fd%m_iters.size()]->DelContext(id);
     };
-    HEvIter*    m_iters[1024];
-    uint32_t	m_iter_cnt;
+    std::vector<HEvIter*>    m_iters;
 };
 
 #endif
