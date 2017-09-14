@@ -232,6 +232,7 @@ private:
         m_fd = fd;
     };
     virtual size_t ReadMsgOk(const char* buff, size_t len, uint64_t id, int fd){
+        LOG(ERROR)<<"ReadMsgOk";
         std::map<uint64_t, AmqpConn*>::iterator it = m_mmp.find(id);
         if (it != m_mmp.end()){
             it->second->m_read_time = time(0);
@@ -262,6 +263,7 @@ private:
         m_handler.SendMsg(msg, id, fd);
     };
     virtual void OnMessage(AmqpConn* ch, const AMQP::Message &message, uint64_t deliveryTag, bool redelivered){
+        LOG(ERROR)<<"OnMessage";
         if (m_back){
             m_back->OnMessage(ch, message, deliveryTag, redelivered);
         }
