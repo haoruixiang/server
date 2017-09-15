@@ -2,52 +2,20 @@
 #define __SERVER_HANDLER_H
 #include "amqp_handler.h"
 
+class NetAddr
+{
+public:
+    std::string ip;
+    int port;
+};
 class ServerConfig
 {
 public:
     ServerConfig(){};
     ~ServerConfig(){};
     AmqpConfig m_amqp;
-};
-
-class NetConn
-{
-public:
-    NetConn(uint64_t id, int fd){m_id = id; m_fd = fd;};
-    ~NetConn(){};
-    uint64_t m_id;
-    int m_fd;
-};
-
-class NetConnHandler
-{
-public:
-    NetConnHandler(){};
-    ~NetConnHandler(){};
-    NetConn* Get(uint64_t id){
-        std::lock_guard<std::mutex> _lock(m_mtx);
-        std::map<uint64_t, NetConn*>::iterator it = m_conns.find(id);
-        if (it == m_conns.end()){
-            return 0;
-        }
-        return it->second;
-    };
-    NetConn* Add(uint64_t id, int fd){
-        NetConn * n = new NetConn(id, fd);
-        std::lock_guard<std::mutex> _lock(m_mtx);
-        m_conns[id] = n;
-        return n;
-    };
-    void Del(uint64_t id, int fd){
-        std::lock_guard<std::mutex> _lock(m_mtx);
-        std::map<uint64_t, NetConn*>::iterator it = m_conns.find(id);
-        if (it != m_conns.end()){
-            delete it->second;
-            m_conns.erase(it);
-        }
-    };
-    std::map<uint64_t, NetConn*>   m_conns;
-    std::mutex          m_mtx;
+    std::vector<NetAddr> m_addrs;
+    int     m_io_threads;
 };
 
 class NetServerOp
@@ -90,15 +58,39 @@ public:
         return 0;
     };
     virtual void CloseConn(uint64_t id, int fd){
-	    m_conns.Del(id, fd);
+        DelSession(fd, id);
     };
     virtual void OnMessage(AmqpConn* ch, const AMQP::Message &message, uint64_t deliveryTag, bool redelivered){
         //do back message
     };
 private:
+    void PushMessage(uint32_t uid, const char* buff, size_t len){
+        std::map<uint64_t, int> router;
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            std::map<uint32_t, std::map<uint64_t, int>>::iterator iter = m_sessions.find(uid);
+            if (iter != m_sessions.end()){
+                std::map<uint64_t, int>::iterator it = iter->second.begin();
+                for (; it!=iter->second.end(); it++){
+                    router[it->first] = it->second;
+                }
+            }   
+        }
+        std::map<uint64_t, int>::iterator it = router.begin();
+        for (; it != router.end(); it++){
+            SendToClientLoop(it->second, it->first, buff, len);
+        }
+    };
+    void DelSession(int fd, uint64_t id){
+        
+    };
+    void SendToClientLoop(int fd, uint64_t id, const char* buff, size_t len){
+        //
+    };
     AmqpHandler      m_mq;     //mq
     AsyncNet  	     m_net;    //tcp
-    NetConnHandler   m_conns;  
+    std::mutex       m_mutex;
+    std::map<uint32_t, std::map<uint64_t, int>> m_sessions;
 };
 
 #endif
