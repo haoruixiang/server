@@ -901,10 +901,6 @@ int shm_queue_pop_cas(char* ptr, const char* queue, int qlen, unsigned int& q_id
             }
             else
             {
-                if (len < 0){
-                    //LOG(ERROR)<<"unknown error:"<<"_old:"<<_old<<"  rt:"<<rt<<" len:"<<len<<" num:"<<num;
-                    return -104;
-                }
                 if (len >0){
                     memcpy(cp, cnode->m_buff, len);
                     len = 0;

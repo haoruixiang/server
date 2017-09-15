@@ -184,7 +184,7 @@ public:
         }
         m_iters.clear();
     };
-    virtual void CallBack(void * data){
+    virtual void CallBack(uint32_t id, void * data){
         HEvIter * v = (HEvIter*)data;
         if (v){
             ev_break(v->Loop());

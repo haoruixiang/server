@@ -287,7 +287,7 @@ private:
         AsyncNetOp * rop = (AsyncNetOp*)m_handler.Context(op->GetId(), op->GetFd());
         LOG(INFO)<<"AddSendMsg:"<<op<<" :"<<rop;
         if (rop && op->GetFd() == rop->GetFd() && op->GetId() == rop->GetId()){
-            LOG(INFO)<<"AddSendMsg:"<<op<<" :"<<rop;
+            LOG(INFO)<<"AddSendMsg:"<<op<<" :"<<rop<<" fd:"<<rop->GetFd();
             if (rop->m_status == 0){
                 ev_init(&(rop->m_swatcher), WriteCallBack);
                 rop->m_swatcher.data = rop;

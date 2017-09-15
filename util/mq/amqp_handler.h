@@ -232,12 +232,13 @@ private:
         m_fd = conn->GetFd();
     };
     virtual size_t OnMessage(AsyncConn* conn, const char* buff, size_t len){
-        LOG(INFO)<<"OnMessage"<<conn<<" len:"<<len;
+        LOG(INFO)<<"OnMessage"<<conn<<" len:"<<len<< " id:"<<conn->GetId();
         std::map<uint64_t, AmqpConn*>::iterator it = m_mmp.find(conn->GetId());
         if (it != m_mmp.end()){
             it->second->m_read_time = time(0);
             return it->second->m_connection->parse(buff, len);
         }else{
+            LOG(ERROR)<<"OnMessage not fount id:"<< conn->GetId();
             m_handler.CloseFd(conn->GetId(), conn->GetFd());
         }
         return 0;
@@ -270,12 +271,15 @@ private:
         }
     };
     virtual void OnTimeOut(){
+        LOG(INFO)<<"OnTimeOut";
+        /*
         time_t t = time(0);
         std::map<uint64_t, AmqpConn*>::iterator it = m_mmp.begin();
         for (;it != m_mmp.end(); it++){
             if (t - it->second->m_read_time > 10){
+                LOG(ERROR)<<"time out close fd:"<<it->second->m_fd<<" id:"
+                        <<it->second->m_id<<" time:"<<it->second->m_read_time;               
                 m_handler.CloseFd(it->second->m_id, it->second->m_fd);
-                LOG(ERROR)<<"time out close fd:"<<it->second->m_fd<<" id:"<<it->second->m_id<<" time:"<<it->second->m_read_time;
                 continue;
             }
         }
@@ -298,7 +302,7 @@ private:
             if (b){
                 break;
             }
-        }while(true);
+        }while(true);*/
     };
     AsyncNet         m_handler;
     AmqpConfig*      m_config;
