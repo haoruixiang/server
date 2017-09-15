@@ -227,41 +227,44 @@ private:
         m_mmp[m_id] = conn;
         return 0;
     };
-    virtual void OnConnect(uint64_t id, int fd){
-        m_id = id;
-        m_fd = fd;
+    virtual void OnConnect(AsyncConn* conn){
+        m_id = conn->GetId();
+        m_fd = conn->GetFd();
     };
-    virtual size_t ReadMsgOk(const char* buff, size_t len, uint64_t id, int fd){
-        std::map<uint64_t, AmqpConn*>::iterator it = m_mmp.find(id);
+    virtual size_t OnMessage(AsyncConn* conn, const char* buff, size_t len){
+        LOG(INFO)<<"OnMessage"<<conn<<" len:"<<len;
+        std::map<uint64_t, AmqpConn*>::iterator it = m_mmp.find(conn->GetId());
         if (it != m_mmp.end()){
             it->second->m_read_time = time(0);
             return it->second->m_connection->parse(buff, len);
         }else{
-            LOG(ERROR)<<"ReadMsgOk close:"<<fd;
-            m_handler.CloseFd(id, fd);
+            m_handler.CloseFd(conn->GetId(), conn->GetFd());
         }
         return 0;
     };
-    virtual void CloseConn(uint64_t id, int fd){
-        LOG(ERROR)<<"CloseConn fd:"<<fd<<" id:"<<id;
-        std::map<uint64_t, AmqpConn*>::iterator ct = m_mmp.find(id);
+    virtual void CloseConn(AsyncConn* conn){
+        LOG(INFO)<<"CloseConn:"<<conn<<" "<<conn->GetFd();
+        std::map<uint64_t, AmqpConn*>::iterator ct = m_mmp.find(conn->GetId());
         if (ct != m_mmp.end()){
             m_losts.push_back(ct->second);
+            m_mmp.erase(ct);
         }
-        m_mmp.erase(id);
-        close(fd);
+        close(conn->GetFd());
         m_id = 0;
         m_fd = -1;
     };
     virtual void OnConnError(AmqpConn* ch){
         if (ch){
+            LOG(INFO)<<"close:"<<ch->m_id<<" "<<ch->m_fd;
             m_handler.CloseFd(ch->m_id, ch->m_fd);
         }
     };
     virtual void SendData(std::string & msg, uint64_t id, int fd){
+        LOG(INFO)<<"SendData:"<<msg.size();
         m_handler.SendMsg(msg, id, fd);
     };
     virtual void OnMessage(AmqpConn* ch, const AMQP::Message &message, uint64_t deliveryTag, bool redelivered){
+        LOG(INFO)<<"OnMessage:"<<ch<<std::string(message.body(),message.bodySize());
         if (m_back){
             m_back->OnMessage(ch, message, deliveryTag, redelivered);
         }
