@@ -17,7 +17,7 @@ class EvCallBack
 public:
     EvCallBack(){m_version=0;};
     virtual ~EvCallBack(){};
-    virtual void CallBack(void * data){};
+    virtual void CallBack(uint32_t id, void * data){};
 private:
     unsigned char  m_version;
 };
@@ -42,7 +42,7 @@ public:
 class HEvIter
 {
 public:
-    HEvIter(float timeout = 1.0, EvTimeOutCallBack* b = 0,int queue_max = 12800){
+    HEvIter(uint32_t id, float timeout = 1.0, EvTimeOutCallBack* b = 0,int queue_max = 12800){
         m_read_id = 0;
         m_write_id = 1;
         m_time_back = b;
@@ -52,6 +52,7 @@ public:
         for (int i=0; i<queue_max; i++){
             m_queue[i] = new EvQueueData(0,0);
         }
+        m_id = id;
     };
     virtual ~HEvIter(){
     };
@@ -145,7 +146,7 @@ private:
                 }
             }
             if (back){
-                back->m_back->CallBack(back->m_data);
+                back->m_back->CallBack(m_id, back->m_data);
             }else{
                 break;
             }
@@ -168,6 +169,7 @@ private:
     uint32_t		    m_queue_max;
     volatile uint64_t	m_read_id;
     volatile uint64_t	m_write_id;
+    uint32_t            m_id;
     std::map<uint64_t, void*> m_ptr;
 };
 
@@ -191,7 +193,7 @@ public:
     };
     void Start(uint32_t max, float timeout = 1.0, EvTimeOutCallBack* p = 0, int max_queue = 12800){
         for (uint32_t i = 0; i< max; i++){
-            m_iters.push_back(new HEvIter(timeout,p,max_queue));
+            m_iters.push_back(new HEvIter(i,timeout,p,max_queue));
         }
     };
     int Notify(uint32_t fd, EvCallBack* back, void * data){

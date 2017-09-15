@@ -37,7 +37,7 @@ inline uint32_t StrToInt32(const char* str){
     return (unsigned int)atoi(str);
 }
 
-inline void* ShmPorint(const char* key_id, size_t size){
+void* ShmPorint(const char* key_id, size_t size){
     unsigned int id = StrToInt32(key_id);
     int Memory = shmget ( id, 0, 0 );
     if (Memory < 0){

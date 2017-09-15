@@ -208,7 +208,7 @@ public:
         m_cid++;
         return 0;
     };
-    virtual void CallBack(void * data){
+    virtual void CallBack(uint32_t id, void * data){
         AsyncNetOp * v = (AsyncNetOp*)data;
         (this->*m_op[v->m_op])(v);
     };
