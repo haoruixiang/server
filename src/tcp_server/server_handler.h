@@ -1,6 +1,7 @@
 #ifndef __SERVER_HANDLER_H
 #define __SERVER_HANDLER_H
 #include "amqp_handler.h"
+#include "shmq_handler.h"
 
 class NetAddr
 {
@@ -89,6 +90,7 @@ private:
     };
     AmqpHandler      m_mq;     //mq
     AsyncNet  	     m_net;    //tcp
+    ShmqHandler      m_shmq;
     std::mutex       m_mutex;
     std::map<uint32_t, std::map<uint64_t, int>> m_sessions;
 };
