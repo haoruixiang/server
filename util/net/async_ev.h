@@ -192,6 +192,9 @@ public:
         }
     };
     void Start(uint32_t max, float timeout = 1.0, EvTimeOutCallBack* p = 0, int max_queue = 12800){
+        if (m_iters.size()>0){
+            return ;
+        }
         for (uint32_t i = 0; i< max; i++){
             m_iters.push_back(new HEvIter(i,timeout,p,max_queue));
             m_iters[m_iters.size()-1]->Start();
