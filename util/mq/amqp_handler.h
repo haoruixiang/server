@@ -271,8 +271,6 @@ private:
         }
     };
     virtual void OnTimeOut(){
-        LOG(INFO)<<"OnTimeOut";
-        /*
         time_t t = time(0);
         std::map<uint64_t, AmqpConn*>::iterator it = m_mmp.begin();
         for (;it != m_mmp.end(); it++){
@@ -302,7 +300,7 @@ private:
             if (b){
                 break;
             }
-        }while(true);*/
+        }while(true);
     };
     AsyncNet         m_handler;
     AmqpConfig*      m_config;
