@@ -90,14 +90,33 @@ public:
     size_t             writer;
 };
 
+class AsyncConn
+{
+public:
+    AsyncConn(int fd, uint64_t id){
+        m_fd = fd;
+        m_id = id;
+    };
+    virtual ~AsyncConn(){};
+    void* GetConext(){return m_conext;};
+    void SetContext(void* ptr){m_conext = ptr;};
+    int   GetFd(){return m_fd;};
+    uint64_t GetId(){return m_id;};
+    uint64_t AddId(){return m_id++;};
+private:
+    int             m_fd;
+    uint64_t        m_id;
+    void*           m_conext;
+};
+
 class AsyncNetCallBack
 {
 public:
     AsyncNetCallBack(){};
     virtual ~AsyncNetCallBack(){};
-    virtual size_t ReadMsgOk(const char* buff, size_t len, uint64_t id, int fd){return 0;};
-    virtual void CloseConn(uint64_t id, int fd){};
-    virtual void OnConnect(uint64_t id, int fd){};
+    virtual size_t OnMessage(AsyncConn* conn, const char* buff, size_t len){return 0;};
+    virtual void CloseConn(AsyncConn* conn){};
+    virtual void OnConnect(AsyncConn* conn){};
     virtual void OnTimeOut(){};
 };
 
@@ -113,14 +132,12 @@ public:
 
 class AsyncNet;
 
-class AsyncNetOp
+class AsyncNetOp :public AsyncConn
 {
 public:
-    AsyncNetOp(AsyncNet* p, int fd, int op, uint64_t id = 0){
-        m_id = id;
+    AsyncNetOp(AsyncNet* p, int fd, int op, uint64_t id):AsyncConn(fd,id){
         m_read_buff = 0;
         m_parent = p;
-        m_fd = fd;
         m_op = op;
         m_status = 0;
     };
@@ -133,11 +150,9 @@ public:
             delete (*it);
         }
     };
-    int             m_fd;
     int		        m_op;
     ev_io           m_rwatcher;
     ev_io           m_swatcher;
-    uint64_t        m_id;
     HNetBuff*       m_read_buff;
     std::list<HNetSendBuff*> m_send_buff;
     AsyncNet*	    m_parent;
@@ -179,7 +194,7 @@ public:
             return -1;
         }
         m_handler.Start(max);
-        AsyncNetOp* op = new AsyncNetOp(this, fd, 0);
+        AsyncNetOp* op = new AsyncNetOp(this, fd, 0, 0);
         m_handler.Notify((uint32_t)fd, this, op);
         return 0;
     };
@@ -203,9 +218,10 @@ public:
         AsyncNetOp* op = new AsyncNetOp(this, fd, 3, m_cid);
         m_handler.Notify((uint32_t)fd, this, op);
         if (m_back){
-            m_back->OnConnect(m_cid, fd);
+            m_back->OnConnect((AsyncConn*)op);
         }
         m_cid++;
+        LOG(INFO)<<"ConnectServer:"<<op<<" :"<<op->GetFd();
         return 0;
     };
     virtual void CallBack(uint32_t id, void * data){
@@ -225,9 +241,11 @@ public:
         if (m_handler.Notify((uint32_t)fd, this, op)<0){
             LOG(ERROR)<<"Notify:"<<fd<<" id:"<<id<<" false";
         }
+        LOG(INFO)<<"SendMsg:"<<op<<" size:"<<msg.size()<< " fd:"<<fd<<" id:"<< id;
     };
     void CloseFd(uint64_t id, int fd){
         AsyncNetOp* op = new AsyncNetOp(this, fd, 2, id);
+        LOG(INFO)<<"CloseFd:"<<id<<" "<<fd<<" "<<op;
         m_handler.Notify((uint32_t)fd, this, op);
     };
     int Notify(uint32_t fd, EvCallBack* back ,void* ptr){
@@ -237,45 +255,45 @@ private:
     void AddAcceptFd(AsyncNetOp* op){
         ev_init(&(op->m_rwatcher), AcceptCallBack);
         op->m_rwatcher.data = op;
-        ev_io_set(&(op->m_rwatcher), op->m_fd, EV_READ);
-        ev_io_start(m_handler.Loop((uint32_t)(op->m_fd)), &(op->m_rwatcher));
+        ev_io_set(&(op->m_rwatcher), op->GetFd(), EV_READ);
+        ev_io_start(m_handler.Loop((uint32_t)(op->GetFd())), &(op->m_rwatcher));
     };
     void AddCloseFd(AsyncNetOp* op){
-        AsyncNetOp * rop = (AsyncNetOp*)m_handler.Context(op->m_id, op->m_fd);
-        if (rop && rop->m_fd == op->m_fd && rop->m_id == op->m_id){
-            ev_io_stop(m_handler.Loop((uint32_t)rop->m_fd), &(rop->m_rwatcher));
-            ev_io_stop(m_handler.Loop((uint32_t)rop->m_fd), &(rop->m_swatcher));
-            m_handler.DelContext(rop->m_id, rop->m_fd);
+        AsyncNetOp * rop = (AsyncNetOp*)m_handler.Context(op->GetId(), op->GetFd());
+        if (rop && rop->GetFd() == op->GetFd() && rop->GetId() == op->GetId()){
+            ev_io_stop(m_handler.Loop((uint32_t)rop->GetFd()), &(rop->m_rwatcher));
+            ev_io_stop(m_handler.Loop((uint32_t)rop->GetFd()), &(rop->m_swatcher));
+            m_handler.DelContext(rop->GetId(), rop->GetFd());
             if (m_back){
-                m_back->CloseConn(rop->m_id, rop->m_fd);
+                m_back->CloseConn(rop);
             }
             delete rop;
         }
         delete op;
     };
     void CloseOp(AsyncNetOp* op){
-        LOG(ERROR)<<"CloseOp:"<<op;
+        LOG(INFO)<<"CloseOp:"<<op<<" "<<op->GetFd();
         if (op){
-            ev_io_stop(m_handler.Loop((uint32_t)op->m_fd), &(op->m_rwatcher));
-            ev_io_stop(m_handler.Loop((uint32_t)op->m_fd), &(op->m_swatcher));
-            m_handler.DelContext(op->m_id, op->m_fd);
+            ev_io_stop(m_handler.Loop((uint32_t)op->GetFd()), &(op->m_rwatcher));
+            ev_io_stop(m_handler.Loop((uint32_t)op->GetFd()), &(op->m_swatcher));
+            m_handler.DelContext(op->GetId(), op->GetFd());
             if (m_back){
-                m_back->CloseConn(op->m_id, op->m_fd);
+                m_back->CloseConn(op);
             }
             delete op;
         }
     };
     void AddSendMsg(AsyncNetOp* op){
-        AsyncNetOp * rop = (AsyncNetOp*)m_handler.Context(op->m_id, op->m_fd);
-        if (rop && op->m_fd == rop->m_fd && op->m_id == rop->m_id){
-            //LOG(INFO)<<"AddSendMsg:"<<rop<<" status:"<<rop->m_status<<" fd:"<<op->m_fd<<" id:"<<op->m_id;
+        AsyncNetOp * rop = (AsyncNetOp*)m_handler.Context(op->GetId(), op->GetFd());
+        LOG(INFO)<<"AddSendMsg:"<<op<<" :"<<rop;
+        if (rop && op->GetFd() == rop->GetFd() && op->GetId() == rop->GetId()){
+            LOG(INFO)<<"AddSendMsg:"<<op<<" :"<<rop;
             if (rop->m_status == 0){
                 ev_init(&(rop->m_swatcher), WriteCallBack);
                 rop->m_swatcher.data = rop;
-                ev_io_set(&(rop->m_swatcher), rop->m_fd, EV_WRITE);
-                ev_io_start(m_handler.Loop((uint32_t)(rop->m_fd)), &(rop->m_swatcher));
+                ev_io_set(&(rop->m_swatcher), rop->GetFd(), EV_WRITE);
+                ev_io_start(m_handler.Loop((uint32_t)(rop->GetFd())), &(rop->m_swatcher));
                 rop->m_status = 1;
-                //LOG(INFO)<<"AddSendMsg start loop";
             }
             HNetSendBuff * buff = op->m_send_buff.front();
             op->m_send_buff.pop_front();
@@ -286,15 +304,14 @@ private:
     void AddReadWrite(AsyncNetOp* op){
         ev_init(&(op->m_rwatcher), ReadCallBack);
         op->m_rwatcher.data = op;
-        ev_io_set(&(op->m_rwatcher), op->m_fd, EV_READ);
-        ev_io_start(m_handler.Loop((uint32_t)(op->m_fd)), &(op->m_rwatcher));
+        ev_io_set(&(op->m_rwatcher), op->GetFd(), EV_READ);
+        ev_io_start(m_handler.Loop((uint32_t)(op->GetFd())), &(op->m_rwatcher));
         ev_init(&(op->m_swatcher), WriteCallBack);
         op->m_swatcher.data = op;
-        ev_io_set(&(op->m_swatcher), op->m_fd, EV_WRITE);
-        ev_io_start(m_handler.Loop((uint32_t)(op->m_fd)), &(op->m_swatcher));
-        m_handler.SetContext(op->m_id, op->m_fd, op); //register
+        ev_io_set(&(op->m_swatcher), op->GetFd(), EV_WRITE);
+        ev_io_start(m_handler.Loop((uint32_t)(op->GetFd())), &(op->m_swatcher));
+        m_handler.SetContext(op->GetId(), op->GetFd(), op); //register
         op->m_status = 1;
-        //LOG(INFO)<<"AddReadWrite:"<<op<<" id:"<<op->m_id<<" fd:"<<op->m_fd;
     };
     void Accept(AsyncNetOp* op){
         if (!op){return;}
@@ -302,7 +319,7 @@ private:
             sockaddr_storage addr_storage;
             socklen_t addr_len = sizeof(sockaddr_storage);
             sockaddr* saddr =  (sockaddr*)(&addr_storage);
-            int fd = accept(op->m_fd, saddr, &addr_len);
+            int fd = accept(op->GetFd(), saddr, &addr_len);
             if (fd<=0){
                 return;
             }
@@ -310,7 +327,7 @@ private:
                 close(fd);
                 return;
             }
-            AsyncNetOp* cop = new AsyncNetOp(this, fd, 3, op->m_id++);
+            AsyncNetOp* cop = new AsyncNetOp(this, fd, 3, op->AddId());
             m_handler.Notify((uint32_t)fd, this, cop);
         }while(true);
     };
@@ -319,16 +336,17 @@ private:
         if (!op->m_read_buff){
             op->m_read_buff = new HNetBuff();
         }
-        int rt = op->m_read_buff->ReadFd(op->m_fd);
+        int rt = op->m_read_buff->ReadFd(op->GetFd());
         if (rt <= 0){
             if (errno != EAGAIN || errno != EWOULDBLOCK || rt == -8888){
-                LOG(ERROR)<<"read error:"<<errno<<" "<<op;
+                LOG(ERROR)<<"read error:"<<errno<<" "<<op<<" "<<op->GetFd();
                 CloseOp(op); 
                 return ;
             }
         }
+        LOG(INFO)<<"Read:"<<op->GetFd()<<" size:"<<rt;
         if (rt > 0 && m_back ){
-            size_t len = m_back->ReadMsgOk(op->m_read_buff->Peek(), op->m_read_buff->ReadableBytes(), op->m_id, op->m_fd);
+            size_t len = m_back->OnMessage(op, op->m_read_buff->Peek(), op->m_read_buff->ReadableBytes());
             op->m_read_buff->Retrieve(len);
         }
     };
@@ -336,7 +354,7 @@ private:
         if (!op){return;}
         do{
             if (op->m_send_buff.size()<=0){
-                ev_io_stop(m_handler.Loop((uint32_t)(op->m_fd)), &(op->m_swatcher));
+                ev_io_stop(m_handler.Loop((uint32_t)(op->GetFd())), &(op->m_swatcher));
                 op->m_status = 0;
                 break;
             }
@@ -348,7 +366,8 @@ private:
             }
             const char * w = f->buff.c_str()+f->send_len;
             size_t len = f->buff.size() - f->send_len;
-            int rt = ::write(op->m_fd, w, len);
+            int rt = ::write(op->GetFd(), w, len);
+            LOG(INFO)<<"Write:"<<op->GetFd()<<" size:"<<rt;
             if (rt < 0) {
                 if (errno != EWOULDBLOCK) {
                     if (errno == EPIPE || errno == ECONNRESET){
@@ -358,7 +377,6 @@ private:
                     }
                 }
             } else {
-                //LOG(INFO)<<"Write fd:"<<op->m_fd<<" rt:"<<rt;
                 f->send_len += rt;
                 if (rt == 0){
                     return ;

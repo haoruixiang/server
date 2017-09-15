@@ -56,7 +56,7 @@ public:
     };
     virtual ~HEvIter(){
     };
-    void Start(int time_out) {
+    void Start() {
         m_loop = ev_loop_new(0);
         m_eventfd[0] = -1; //re
         m_eventfd[1] = -1;
@@ -70,7 +70,7 @@ public:
         m_watcher.data = this;
         ev_io_set(&m_watcher, m_eventfd[0], EV_READ);
         ev_io_start(m_loop, &m_watcher);
-        if (time_out == 0){
+        if (m_time_back){
             ev_init(&m_twatcher, TimeOutCallBack);
             m_twatcher.data = this;
             ev_timer_set(&m_twatcher, m_time_out, 1);
@@ -194,6 +194,7 @@ public:
     void Start(uint32_t max, float timeout = 1.0, EvTimeOutCallBack* p = 0, int max_queue = 12800){
         for (uint32_t i = 0; i< max; i++){
             m_iters.push_back(new HEvIter(i,timeout,p,max_queue));
+            m_iters[m_iters.size()-1]->Start();
         }
     };
     int Notify(uint32_t fd, EvCallBack* back, void * data){
