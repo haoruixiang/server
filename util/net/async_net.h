@@ -193,7 +193,7 @@ public:
             close(fd);
             return -1;
         }
-        m_handler.Start(max);
+        m_handler.Start(max, 1.0, this);
         AsyncNetOp* op = new AsyncNetOp(this, fd, 0, 0);
         m_handler.Notify((uint32_t)fd, this, op);
         return 0;
