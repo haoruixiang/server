@@ -270,7 +270,7 @@ private:
             m_back->OnMessage(ch, message, deliveryTag, redelivered);
         }
     };
-    virtual void OnTimeOut(){
+    virtual void OnTimeOut(uint32_t tid){
         time_t t = time(0);
         std::map<uint64_t, AmqpConn*>::iterator it = m_mmp.begin();
         for (;it != m_mmp.end(); it++){
