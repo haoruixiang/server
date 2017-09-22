@@ -39,7 +39,7 @@ public:
     virtual size_t OnMessage(uint32_t tid, AsyncConn* conn, const char* buff, size_t len){return 0;};
     virtual void CloseConn(uint32_t tid, AsyncConn* conn){};
     virtual void OnConnect(uint32_t tid, AsyncConn* conn){};
-    virtual void OnTimeOut(){};
+    virtual void OnTimeOut(uint32_t tid){};
 };
 
 class HNetSendBuff
@@ -177,9 +177,9 @@ public:
         AsyncNetOp * v = (AsyncNetOp*)data;
         (this->*m_op[v->m_op])(tid, v);
     };
-    virtual void TimeCallBack(){
+    virtual void TimeCallBack(uint32_t tid){
         if (m_back){
-            m_back->OnTimeOut();
+            m_back->OnTimeOut(uint32_t tid);
         }
     };
     void  SendMsg(std::string & msg, uint64_t id, int fd){

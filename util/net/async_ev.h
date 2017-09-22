@@ -27,7 +27,7 @@ class EvTimeOutCallBack
 public:
     EvTimeOutCallBack(){};
     virtual ~EvTimeOutCallBack(){};
-    virtual void TimeCallBack(){};
+    virtual void TimeCallBack(uint32_t tid){};
 };
 
 class EvQueueData
@@ -126,7 +126,7 @@ private:
     };
     void DoTimeOut(){
         if (m_time_back){
-            m_time_back->TimeCallBack();
+            m_time_back->TimeCallBack(m_id);
         }
     };
     void DoNotify(){
