@@ -53,6 +53,7 @@ public:
             m_queue[i] = new EvQueueData(0,0);
         }
         m_id = id;
+        m_ptr = 0;
     };
     virtual ~HEvIter(){
     };
@@ -101,17 +102,11 @@ public:
     struct ev_loop* Loop(){
         return m_loop;
     };
-    void*  Context(uint64_t id){
-        return m_ptr[id];
+    void*  Context(){
+        return m_ptr;
     };
-    void   SetContext(uint64_t id, void* p){
-        m_ptr[id] = p;
-    };
-    void   DelContext(uint64_t id){
-        std::map<uint64_t, void*>::iterator it = m_ptr.find(id);
-        if (it != m_ptr.end()){
-            m_ptr.erase(it);
-        }
+    void   SetContext(void* p){
+        m_ptr = p;
     };
 private:
     static void NotifyCallBack(struct ev_loop* loop, struct ev_io* ev, int events){
@@ -170,7 +165,7 @@ private:
     volatile uint64_t	m_read_id;
     volatile uint64_t	m_write_id;
     uint32_t            m_id;
-    std::map<uint64_t, void*> m_ptr;
+    void*               m_ptr;
 };
 
 class AsyncEvHandler :public EvCallBack
@@ -206,14 +201,11 @@ public:
     struct ev_loop* Loop(uint32_t fd){
         return m_iters[fd%m_iters.size()]->Loop();
     };
-    void * Context(uint32_t fd, uint64_t id){
-        return m_iters[fd%m_iters.size()]->Context(id);
+    void * Context(uint32_t id){
+        return m_iters[id%m_iters.size()]->Context();
     };
-    void SetContext(uint32_t fd, uint64_t id, void* p){
-        m_iters[fd%m_iters.size()]->SetContext(id, p);
-    };
-    void DelContext(uint32_t fd, uint64_t id){
-        m_iters[fd%m_iters.size()]->DelContext(id);
+    void SetContext(uint32_t id,void* p){
+        m_iters[id%m_iters.size()]->SetContext(p);
     };
     std::vector<HEvIter*>    m_iters;
 };

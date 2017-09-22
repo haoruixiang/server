@@ -227,11 +227,11 @@ private:
         m_mmp[m_id] = conn;
         return 0;
     };
-    virtual void OnConnect(AsyncConn* conn){
+    virtual void OnConnect(uint32_t tid, AsyncConn* conn){
         m_id = conn->GetId();
         m_fd = conn->GetFd();
     };
-    virtual size_t OnMessage(AsyncConn* conn, const char* buff, size_t len){
+    virtual size_t OnMessage(uint32_t tid, AsyncConn* conn, const char* buff, size_t len){
         LOG(INFO)<<"OnMessage"<<conn<<" len:"<<len<< " id:"<<conn->GetId();
         std::map<uint64_t, AmqpConn*>::iterator it = m_mmp.find(conn->GetId());
         if (it != m_mmp.end()){
@@ -243,7 +243,7 @@ private:
         }
         return 0;
     };
-    virtual void CloseConn(AsyncConn* conn){
+    virtual void CloseConn(uint32_t tid, AsyncConn* conn){
         LOG(INFO)<<"CloseConn:"<<conn<<" "<<conn->GetFd();
         std::map<uint64_t, AmqpConn*>::iterator ct = m_mmp.find(conn->GetId());
         if (ct != m_mmp.end()){

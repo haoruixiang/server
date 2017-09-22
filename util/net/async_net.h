@@ -2,6 +2,7 @@
 #define  __ASYNC_NET_H
 
 #include "async_ev.h"
+#include "netbuff.h"
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
@@ -11,102 +12,23 @@
 #include <errno.h>
 #include <fcntl.h>
 
-class HNetBuff
-{
-public:
-    HNetBuff():buffer(1024),reader(0),writer(0){
-    };
-    ~HNetBuff(){
-    };
-    int ReadFd(int fd){
-        char extrabuf[65536];
-        struct iovec vec[2];
-        const size_t writable = WritableBytes();
-        vec[0].iov_base = Begin() + writer;
-        vec[0].iov_len = writable;
-        vec[1].iov_base = extrabuf;
-        vec[1].iov_len = sizeof(extrabuf);
-        const ssize_t n = ::readv(fd, vec, 2);
-        if (n < 0) {
-        } else if (static_cast<size_t>(n) <= writable) {
-            writer += n;
-        } else {
-            writer = buffer.size();
-            Append(extrabuf, n - writable);
-        }
-        return n;
-    };
-    size_t ReadableBytes() const {
-        return writer - reader; 
-    };
-    size_t WritableBytes() const {
-        return buffer.size() - writer;
-    };
-    void Append(const std::string& str) {
-        Append(str.c_str(), str.size());
-    };
-    void Append(const char* data, size_t len) {
-        EnsureWritableBytes(len);
-        std::copy(data, data+len, BeginWrite());
-        writer += len;
-    };
-    void EnsureWritableBytes(size_t len) {
-        if (WritableBytes() < len) {
-            MakeSpace(len);
-        }
-    }; 
-    void MakeSpace(size_t len) {
-        if (WritableBytes() + reader < len) {
-            buffer.resize(writer + len);
-        } else {
-            size_t readable = ReadableBytes();
-            std::copy(Begin()+reader, Begin()+writer, Begin());
-            reader = 0;
-            writer = readable;
-        }
-    };
-    const char* Peek() const {
-        return Begin() + reader;
-    };
-    void Retrieve(size_t len) {
-        if (len < ReadableBytes()) {
-            reader += len;
-        } else {
-            reader = 0;
-            writer = 0;
-        }
-    };
-    char* BeginWrite() {
-        return Begin() + writer;
-    };
-    char* Begin() {
-        return &*buffer.begin();
-    };
-    const char* Begin() const {
-        return &*buffer.begin();
-    };
-    std::vector<char>  buffer;
-    size_t             reader;
-    size_t             writer;
-};
-
 class AsyncConn
 {
 public:
-    AsyncConn(int fd, uint64_t id){
+    AsyncConn(int fd, uint64_t id):m_fd(fd),m_id(id),m_context(0){
         m_fd = fd;
         m_id = id;
     };
     virtual ~AsyncConn(){};
-    void* GetConext(){return m_conext;};
-    void SetContext(void* ptr){m_conext = ptr;};
+    void* GetContext(){return m_context;};
+    void SetContext(void* ptr){m_context = ptr;};
     int   GetFd(){return m_fd;};
     uint64_t GetId(){return m_id;};
     uint64_t AddId(){return m_id++;};
 private:
     int             m_fd;
     uint64_t        m_id;
-    void*           m_conext;
+    void*           m_context;
 };
 
 class AsyncNetCallBack
@@ -114,9 +36,9 @@ class AsyncNetCallBack
 public:
     AsyncNetCallBack(){};
     virtual ~AsyncNetCallBack(){};
-    virtual size_t OnMessage(AsyncConn* conn, const char* buff, size_t len){return 0;};
-    virtual void CloseConn(AsyncConn* conn){};
-    virtual void OnConnect(AsyncConn* conn){};
+    virtual size_t OnMessage(uint32_t tid, AsyncConn* conn, const char* buff, size_t len){return 0;};
+    virtual void CloseConn(uint32_t tid, AsyncConn* conn){};
+    virtual void OnConnect(uint32_t tid, AsyncConn* conn){};
     virtual void OnTimeOut(){};
 };
 
@@ -135,11 +57,15 @@ class AsyncNet;
 class AsyncNetOp :public AsyncConn
 {
 public:
-    AsyncNetOp(AsyncNet* p, int fd, int op, uint64_t id):AsyncConn(fd,id){
-        m_read_buff = 0;
-        m_parent = p;
-        m_op = op;
-        m_status = 0;
+    AsyncNetOp(AsyncNet* p, int fd, uint8_t op, uint64_t id):
+            AsyncConn(fd,id),
+            m_op(op),
+            m_status(0),
+            m_connect(0),
+            m_parent(p),
+            m_read_buff(0)
+            
+    {
     };
     virtual ~AsyncNetOp(){
         std::list<HNetSendBuff*>::iterator it;
@@ -150,15 +76,42 @@ public:
             delete (*it);
         }
     };
-    int		        m_op;
+    uint8_t		    m_op;
+    uint8_t         m_status;
+    uint8_t         m_connect;
+    AsyncNet*       m_parent;
+    HNetBuff*       m_read_buff;
     ev_io           m_rwatcher;
     ev_io           m_swatcher;
-    HNetBuff*       m_read_buff;
     std::list<HNetSendBuff*> m_send_buff;
-    AsyncNet*	    m_parent;
-    int             m_status;
+    uint32_t        m_tid;
 };
 
+class AsyncNetOps
+{
+public:
+    AsyncNetOps(){};
+    ~AsyncNetOps(){};
+    AsyncNetOp* Get(uint64_t id){
+        std::map<uint64_t, AsyncNetOp*>::iterator it = ops.find(id);
+        if (it != ops.end()){
+            return it->second;
+        }
+        return 0;
+    };
+    void Del(uint64_t id){
+        std::map<uint64_t, AsyncNetOp*>::iterator it = ops.find(id);
+        if (it != ops.end()){
+            delete it->second;
+            ops.erase(it);
+        }
+    };
+    void Set(uint64_t id, AsyncNetOp* op){
+        ops[id] = op;
+    };
+private:
+    std::map<uint64_t, AsyncNetOp*>  ops;
+};
 class AsyncNet :public EvCallBack , public EvTimeOutCallBack
 {
 public:
@@ -217,16 +170,12 @@ public:
         m_handler.Start(1, 1.0, this);
         AsyncNetOp* op = new AsyncNetOp(this, fd, 3, m_cid);
         m_handler.Notify((uint32_t)fd, this, op);
-        if (m_back){
-            m_back->OnConnect((AsyncConn*)op);
-        }
         m_cid++;
-        LOG(INFO)<<"ConnectServer:"<<op<<" :"<<op->GetFd();
         return 0;
     };
-    virtual void CallBack(uint32_t id, void * data){
+    virtual void CallBack(uint32_t tid, void * data){
         AsyncNetOp * v = (AsyncNetOp*)data;
-        (this->*m_op[v->m_op])(v);
+        (this->*m_op[v->m_op])(tid, v);
     };
     virtual void TimeCallBack(){
         if (m_back){
@@ -241,68 +190,79 @@ public:
         if (m_handler.Notify((uint32_t)fd, this, op)<0){
             LOG(ERROR)<<"Notify:"<<fd<<" id:"<<id<<" false";
         }
-        LOG(INFO)<<"SendMsg:"<<op<<" size:"<<msg.size()<< " fd:"<<fd<<" id:"<< id;
     };
     void CloseFd(uint64_t id, int fd){
         AsyncNetOp* op = new AsyncNetOp(this, fd, 2, id);
-        LOG(INFO)<<"CloseFd:"<<id<<" "<<fd<<" "<<op;
         m_handler.Notify((uint32_t)fd, this, op);
     };
     int Notify(uint32_t fd, EvCallBack* back ,void* ptr){
         return m_handler.Notify(fd, back, ptr);
     };
 private:
-    void AddAcceptFd(AsyncNetOp* op){
+    void AddAcceptFd(uint32_t tid, AsyncNetOp* op){
         ev_init(&(op->m_rwatcher), AcceptCallBack);
+        op->m_tid = tid;
         op->m_rwatcher.data = op;
         ev_io_set(&(op->m_rwatcher), op->GetFd(), EV_READ);
         ev_io_start(m_handler.Loop((uint32_t)(op->GetFd())), &(op->m_rwatcher));
     };
-    void AddCloseFd(AsyncNetOp* op){
-        AsyncNetOp * rop = (AsyncNetOp*)m_handler.Context(op->GetId(), op->GetFd());
-        if (rop && rop->GetFd() == op->GetFd() && rop->GetId() == op->GetId()){
-            ev_io_stop(m_handler.Loop((uint32_t)rop->GetFd()), &(rop->m_rwatcher));
-            ev_io_stop(m_handler.Loop((uint32_t)rop->GetFd()), &(rop->m_swatcher));
-            m_handler.DelContext(rop->GetId(), rop->GetFd());
+    void AddCloseFd(uint32_t tid, AsyncNetOp* op){
+        AsyncNetOps * ops = (AsyncNetOps*)m_handler.Context(tid);
+        if (!ops){
+            ops = new AsyncNetOps();
+            m_handler.SetContext(tid, ops);
+        }
+        AsyncNetOp *cop = ops->Get(op->GetId());
+        if (cop && cop->GetFd() == op->GetFd() && cop->GetId() == op->GetId()){
+            ev_io_stop(m_handler.Loop((uint32_t)cop->GetFd()), &(cop->m_rwatcher));
+            ev_io_stop(m_handler.Loop((uint32_t)cop->GetFd()), &(cop->m_swatcher));
             if (m_back){
-                m_back->CloseConn(rop);
+                m_back->CloseConn(tid, cop);
             }
-            delete rop;
+            ops->Del(cop->GetId());
         }
         delete op;
     };
     void CloseOp(AsyncNetOp* op){
-        LOG(INFO)<<"CloseOp:"<<op<<" "<<op->GetFd();
         if (op){
             ev_io_stop(m_handler.Loop((uint32_t)op->GetFd()), &(op->m_rwatcher));
             ev_io_stop(m_handler.Loop((uint32_t)op->GetFd()), &(op->m_swatcher));
-            m_handler.DelContext(op->GetId(), op->GetFd());
             if (m_back){
-                m_back->CloseConn(op);
+                m_back->CloseConn(op->m_tid,op);
             }
-            delete op;
+            AsyncNetOps * ops = (AsyncNetOps*)m_handler.Context(op->m_tid);
+            if (ops){
+                ops->Del(op->GetId());
+            }else{
+                delete op;
+            }
         }
     };
-    void AddSendMsg(AsyncNetOp* op){
-        AsyncNetOp * rop = (AsyncNetOp*)m_handler.Context(op->GetId(), op->GetFd());
-        LOG(INFO)<<"AddSendMsg:"<<op<<" :"<<rop;
-        if (rop && op->GetFd() == rop->GetFd() && op->GetId() == rop->GetId()){
-            LOG(INFO)<<"AddSendMsg:"<<op<<" :"<<rop<<" fd:"<<rop->GetFd();
-            if (rop->m_status == 0){
-                ev_init(&(rop->m_swatcher), WriteCallBack);
-                rop->m_swatcher.data = rop;
-                ev_io_set(&(rop->m_swatcher), rop->GetFd(), EV_WRITE);
-                ev_io_start(m_handler.Loop((uint32_t)(rop->GetFd())), &(rop->m_swatcher));
-                rop->m_status = 1;
+    void AddSendMsg(uint32_t tid, AsyncNetOp* op){
+        AsyncNetOps * ops = (AsyncNetOps*)m_handler.Context(tid);
+        if (!ops){
+            ops = new AsyncNetOps();
+            m_handler.SetContext(tid, ops);
+        }
+        AsyncNetOp *cop = ops->Get(op->GetId());
+        if (cop && op->GetFd() == cop->GetFd() && op->GetId() == cop->GetId()){
+            if (cop->m_status == 0){
+                ev_init(&(cop->m_swatcher), WriteCallBack);
+                cop->m_tid = tid;
+                cop->m_swatcher.data = cop;
+                ev_io_set(&(cop->m_swatcher), cop->GetFd(), EV_WRITE);
+                ev_io_start(m_handler.Loop((uint32_t)(cop->GetFd())), &(cop->m_swatcher));
+                cop->m_status = 1;
             }
             HNetSendBuff * buff = op->m_send_buff.front();
             op->m_send_buff.pop_front();
-            rop->m_send_buff.push_back(buff);
+            cop->m_send_buff.push_back(buff);
         }
         delete op;
     };
-    void AddReadWrite(AsyncNetOp* op){
+    void AddReadWrite(uint32_t tid, AsyncNetOp* op){
         ev_init(&(op->m_rwatcher), ReadCallBack);
+        op->m_tid = tid;
         op->m_rwatcher.data = op;
         ev_io_set(&(op->m_rwatcher), op->GetFd(), EV_READ);
         ev_io_start(m_handler.Loop((uint32_t)(op->GetFd())), &(op->m_rwatcher));
@@ -310,8 +270,16 @@ private:
         op->m_swatcher.data = op;
         ev_io_set(&(op->m_swatcher), op->GetFd(), EV_WRITE);
         ev_io_start(m_handler.Loop((uint32_t)(op->GetFd())), &(op->m_swatcher));
-        m_handler.SetContext(op->GetId(), op->GetFd(), op); //register
+        AsyncNetOps * ops = (AsyncNetOps*)m_handler.Context(tid);
+        if (!ops){
+            ops = new AsyncNetOps();
+            m_handler.SetContext(tid, ops);
+        }
+        ops->Set(op->GetId(), op);
         op->m_status = 1;
+        if (m_back){
+            m_back->OnConnect(tid, op);
+        }
     };
     void Accept(AsyncNetOp* op){
         if (!op){return;}
@@ -344,9 +312,8 @@ private:
                 return ;
             }
         }
-        LOG(INFO)<<"Read:"<<op->GetFd()<<" size:"<<rt;
         if (rt > 0 && m_back ){
-            size_t len = m_back->OnMessage(op, op->m_read_buff->Peek(), op->m_read_buff->ReadableBytes());
+            size_t len = m_back->OnMessage(op->m_tid, op, op->m_read_buff->Peek(), op->m_read_buff->ReadableBytes());
             op->m_read_buff->Retrieve(len);
         }
     };
@@ -367,7 +334,6 @@ private:
             const char * w = f->buff.c_str()+f->send_len;
             size_t len = f->buff.size() - f->send_len;
             int rt = ::write(op->GetFd(), w, len);
-            LOG(INFO)<<"Write:"<<op->GetFd()<<" size:"<<rt;
             if (rt < 0) {
                 if (errno != EWOULDBLOCK) {
                     if (errno == EPIPE || errno == ECONNRESET){
@@ -433,7 +399,7 @@ private:
     AsyncEvHandler	m_handler;
     AsyncNetCallBack * m_back;
     uint64_t        m_cid;
-    void            (AsyncNet::*m_op[5])(AsyncNetOp*); //void (Test::*add[2])();
+    void            (AsyncNet::*m_op[5])(uint32_t, AsyncNetOp*); //void (Test::*add[2])();
 };
 
 #endif
