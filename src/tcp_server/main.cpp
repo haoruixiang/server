@@ -5,6 +5,9 @@
 #include "sys_help.h"
 int main(int agrv, char** agrc)
 {
+    int a = 12;
+    a+=a*a;
+    LOG(INFO)<<a;
     enableCoredump();
     //NetServerHandler s;
     //s.Start("172.16.0.56", 8899, 4, 4);
@@ -18,14 +21,14 @@ int main(int agrv, char** agrc)
     AMQP_CONFIG config[2];
     config[0].m_ip = "127.0.0.1";
     config[0].m_port = 5672;
-    config[0].m_username = "guesta";
+    config[0].m_username = "guest";
     config[0].m_passwd = "guest";
     config[0].m_vhost = "/";
     config[0].m_ex = "tv";
     config[0].m_queue.push_back(&queue[0]);
     config[1].m_ip = "127.0.0.1";
     config[1].m_port = 5672;
-    config[1].m_username = "guest";
+    config[1].m_username = "guests";
     config[1].m_passwd = "guest";
     config[1].m_vhost = "/";
     config[1].m_ex = "tv";

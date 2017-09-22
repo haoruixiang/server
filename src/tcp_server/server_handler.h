@@ -49,7 +49,7 @@ public:
         //m_net.StartAcceptServer(this, ip, port, max_net);
         return 0;
     };
-    virtual size_t OnMessage(AsyncConn* conn, const char* buff, size_t len){
+    virtual size_t OnMessage(uint32_t tid, AsyncConn* conn, const char* buff, size_t len){
         /*NetConn* n = m_conns.Get(id);
         NetServerOp * op
 	    if (!n){
@@ -58,14 +58,16 @@ public:
 	    SendMsgToBack(buff, n, first);*/
         return 0;
     };
-    virtual void OnConnect(AsyncConn* conn){
-        
+    virtual void OnConnect(uint32_t tid, AsyncConn* conn){
+        //new act, add 
     };
-    virtual void CloseConn(AsyncConn * conn){
+    virtual void CloseConn(uint32_t tid, AsyncConn * conn){
         DelSession(conn->GetFd(), conn->GetId());
     };
     virtual void OnMessage(AmqpConn* ch, const AMQP::Message &message, uint64_t deliveryTag, bool redelivered){
         //do back message
+    };
+    virtual void OnTimeOut(){
     };
 private:
     void PushMessage(uint32_t uid, const char* buff, size_t len){
