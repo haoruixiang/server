@@ -37,8 +37,8 @@ public:
     AsyncNetCallBack(){};
     virtual ~AsyncNetCallBack(){};
     virtual size_t OnMessage(uint32_t tid, AsyncConn* conn, const char* buff, size_t len){return 0;};
-    virtual void CloseConn(uint32_t tid, AsyncConn* conn){};
-    virtual void OnConnect(uint32_t tid, AsyncConn* conn){};
+    virtual void CloseConn(uint32_t tid, AsyncConn* conn, void* data){};
+    virtual void OnConnect(uint32_t tid, AsyncConn* conn, void* data){};
     virtual void OnTimeOut(uint32_t tid){};
 };
 
@@ -57,14 +57,14 @@ class AsyncNet;
 class AsyncNetOp :public AsyncConn
 {
 public:
-    AsyncNetOp(AsyncNet* p, int fd, uint8_t op, uint64_t id):
+    AsyncNetOp(AsyncNet* p, int fd, uint8_t op, uint64_t id, void* data = 0):
             AsyncConn(fd,id),
             m_op(op),
             m_status(0),
             m_connect(0),
             m_parent(p),
-            m_read_buff(0)
-            
+            m_read_buff(0),
+            m_data(data)
     {
     };
     virtual ~AsyncNetOp(){
@@ -81,6 +81,7 @@ public:
     uint8_t         m_connect;
     AsyncNet*       m_parent;
     HNetBuff*       m_read_buff;
+    void*           m_data;
     ev_io           m_rwatcher;
     ev_io           m_swatcher;
     std::list<HNetSendBuff*> m_send_buff;
@@ -147,11 +148,11 @@ public:
             return -1;
         }
         m_handler.Start(max, 1.0, this);
-        AsyncNetOp* op = new AsyncNetOp(this, fd, 0, 0);
+        AsyncNetOp* op = new AsyncNetOp(this, fd, 0, 0, 0);
         m_handler.Notify((uint32_t)fd, this, op);
         return 0;
     };
-    int ConnectServer(AsyncNetCallBack* back, const char* ip, int port){
+    int ConnectServer(AsyncNetCallBack* back, const char* ip, int port, void* data){
         m_back = back;
         sockaddr_in addr;
         memset(&addr, 0, sizeof(struct sockaddr_in));
@@ -168,7 +169,8 @@ public:
             return -1;
         }
         m_handler.Start(1, 1.0, this);
-        AsyncNetOp* op = new AsyncNetOp(this, fd, 3, m_cid);
+        AsyncNetOp* op = new AsyncNetOp(this, fd, 3, m_cid, data);
+        LOG(INFO)<<op<<" "<<m_cid;
         m_handler.Notify((uint32_t)fd, this, op);
         m_cid++;
         return 0;
@@ -179,7 +181,7 @@ public:
     };
     virtual void TimeCallBack(uint32_t tid){
         if (m_back){
-            m_back->OnTimeOut(uint32_t tid);
+            m_back->OnTimeOut(tid);
         }
     };
     void  SendMsg(std::string & msg, uint64_t id, int fd){
@@ -217,7 +219,7 @@ private:
             ev_io_stop(m_handler.Loop((uint32_t)cop->GetFd()), &(cop->m_rwatcher));
             ev_io_stop(m_handler.Loop((uint32_t)cop->GetFd()), &(cop->m_swatcher));
             if (m_back){
-                m_back->CloseConn(tid, cop);
+                m_back->CloseConn(tid, cop, cop->m_data);
             }
             ops->Del(cop->GetId());
         }
@@ -228,7 +230,7 @@ private:
             ev_io_stop(m_handler.Loop((uint32_t)op->GetFd()), &(op->m_rwatcher));
             ev_io_stop(m_handler.Loop((uint32_t)op->GetFd()), &(op->m_swatcher));
             if (m_back){
-                m_back->CloseConn(op->m_tid,op);
+                m_back->CloseConn(op->m_tid, op, op->m_data);
             }
             AsyncNetOps * ops = (AsyncNetOps*)m_handler.Context(op->m_tid);
             if (ops){
@@ -278,7 +280,7 @@ private:
         ops->Set(op->GetId(), op);
         op->m_status = 1;
         if (m_back){
-            m_back->OnConnect(tid, op);
+            m_back->OnConnect(tid, op, op->m_data);
         }
     };
     void Accept(AsyncNetOp* op){
@@ -314,6 +316,7 @@ private:
         }
         if (rt > 0 && m_back ){
             size_t len = m_back->OnMessage(op->m_tid, op, op->m_read_buff->Peek(), op->m_read_buff->ReadableBytes());
+            LOG(INFO)<<"read fd:"<<op->GetFd()<<" len:"<<len;
             op->m_read_buff->Retrieve(len);
         }
     };

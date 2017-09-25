@@ -96,12 +96,12 @@ public:
 class AmqpConn :public AMQP::ConnectionHandler, public AmqpChannelBack
 {
 public:
-    AmqpConn(AmqpCallBack *p, AMQP_CONFIG* conf, int fd, uint64_t id, int flage){
+    AmqpConn(AmqpCallBack *p, AMQP_CONFIG* conf){
         m_connection = 0;
         m_back = p;
         m_conf = conf;
         m_connect_time = time(0);
-        Init(fd, id, flage);
+        m_read_time = time(0);
     };
     ~AmqpConn(){
         Clear();
@@ -144,6 +144,7 @@ public:
         }
     };
     virtual void onConnected(AMQP::Connection* connection){
+        m_read_time = time(0);
     };
     virtual void onError(AMQP::Connection* connection, const char* message){
         LOG(ERROR)<<"onError:"<<connection<<" "<<message;
@@ -219,17 +220,19 @@ private:
         if (!conf){
             return -1;
         }
-        if (m_handler.ConnectServer(this, conf->m_ip.c_str(), conf->m_port)<0){
+        AmqpConn * conn = new AmqpConn(this, conf);
+        if (m_handler.ConnectServer(this, conf->m_ip.c_str(), conf->m_port, conn)<0){
             LOG(ERROR)<<"ConnectServer "<<conf->m_ip<<" "<<conf->m_port<<" false";
+            m_losts.push_back(conn);
             return -1;
         }
-        AmqpConn * conn = new AmqpConn(this, conf, m_fd, m_id, m_flage);
-        m_mmp[m_id] = conn;
         return 0;
     };
-    virtual void OnConnect(uint32_t tid, AsyncConn* conn){
-        m_id = conn->GetId();
-        m_fd = conn->GetFd();
+    virtual void OnConnect(uint32_t tid, AsyncConn* conn, void* data){
+        AmqpConn * amq = (AmqpConn*)data;
+        amq->Init(conn->GetFd(), conn->GetId(), m_flage);
+        m_mmp[conn->GetId()] = amq;
+        LOG(INFO)<<"OnConnect:"<<tid<<" id:"<<conn->GetId()<<" fd:"<<conn->GetFd()<<" "<<conn;
     };
     virtual size_t OnMessage(uint32_t tid, AsyncConn* conn, const char* buff, size_t len){
         LOG(INFO)<<"OnMessage"<<conn<<" len:"<<len<< " id:"<<conn->GetId();
@@ -243,12 +246,13 @@ private:
         }
         return 0;
     };
-    virtual void CloseConn(uint32_t tid, AsyncConn* conn){
-        LOG(INFO)<<"CloseConn:"<<conn<<" "<<conn->GetFd();
+    virtual void CloseConn(uint32_t tid, AsyncConn* conn, void* data){
+        LOG(INFO)<<"CloseConn:"<<conn<<" "<<conn->GetFd()<<" "<<conn->GetId();
         std::map<uint64_t, AmqpConn*>::iterator ct = m_mmp.find(conn->GetId());
         if (ct != m_mmp.end()){
             m_losts.push_back(ct->second);
             m_mmp.erase(ct);
+            LOG(INFO)<<"CloseConn erase";
         }
         close(conn->GetFd());
         m_id = 0;
@@ -276,7 +280,7 @@ private:
         for (;it != m_mmp.end(); it++){
             if (t - it->second->m_read_time > 10){
                 LOG(ERROR)<<"time out close fd:"<<it->second->m_fd<<" id:"
-                        <<it->second->m_id<<" time:"<<it->second->m_read_time;               
+                        <<it->second->m_id<<" time:"<<it->second->m_read_time<<" tid:"<<tid;          
                 m_handler.CloseFd(it->second->m_id, it->second->m_fd);
                 continue;
             }
@@ -287,11 +291,10 @@ private:
             for (; ct != m_losts.end(); ct++){
                 if (t - (*ct)->m_connect_time >3){
                     (*ct)->m_connect_time = t;
-                    if (m_handler.ConnectServer(this, (*ct)->m_conf->m_ip.c_str(), (*ct)->m_conf->m_port)<0){
+                    (*ct)->m_read_time = t;
+                    if (m_handler.ConnectServer(this, (*ct)->m_conf->m_ip.c_str(), (*ct)->m_conf->m_port, (*ct))<0){
                         continue;
                     }
-                    (*ct)->Init(m_fd, m_id, m_flage);
-                    m_mmp[m_id] = (*ct);
                     b = false;
                     m_losts.erase(ct);
                     break;
