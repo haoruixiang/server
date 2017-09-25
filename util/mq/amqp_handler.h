@@ -255,8 +255,6 @@ private:
             LOG(INFO)<<"CloseConn erase";
         }
         close(conn->GetFd());
-        m_id = 0;
-        m_fd = -1;
     };
     virtual void OnConnError(AmqpConn* ch){
         if (ch){
@@ -309,8 +307,6 @@ private:
     AmqpConfig*      m_config;
     std::map<uint64_t, AmqpConn*>  m_mmp;
     std::list<AmqpConn*>    m_losts;
-    uint64_t         m_id;
-    int              m_fd;
     int              m_flage;
     AsyncAmqpCallBack * m_back;
 };
