@@ -1,0 +1,14 @@
+/*
+  mysql + golang web service 架构
+  0. 知识类型 LoreInfo : id, name, content, 
+  1. 知识点 LoreProint : lore_id, info_id, owner_id, name, content, status, add_time, 
+  2. 知识关系 LoreRelation : id, relation_id, owner_id, lore_id, level, name, 
+  3. 默认为8888
+  
+  
+  用户有修改权限
+  游客只有只读权限
+  可以根据用户web端获取用户设备信息生成游客信息
+  
+*/
+
