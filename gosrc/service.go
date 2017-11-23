@@ -1,7 +1,7 @@
 package main
 
 import (
-	"common"
+	"./common"
 	"database/sql"
 	"log"
 )
