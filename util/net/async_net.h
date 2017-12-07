@@ -36,6 +36,7 @@ class AsyncNetCallBack
 public:
     AsyncNetCallBack(){};
     virtual ~AsyncNetCallBack(){};
+    //tid, 属于哪个事件处理器
     virtual size_t OnMessage(uint32_t tid, AsyncConn* conn, const char* buff, size_t len){return 0;};
     virtual void CloseConn(uint32_t tid, AsyncConn* conn, void* data){};
     virtual void OnConnect(uint32_t tid, AsyncConn* conn, void* data){};
@@ -76,7 +77,7 @@ public:
             delete (*it);
         }
     };
-    uint8_t		    m_op;
+    uint8_t         m_op;
     uint8_t         m_status;
     uint8_t         m_connect;
     AsyncNet*       m_parent;
@@ -113,6 +114,14 @@ public:
 private:
     std::map<uint64_t, AsyncNetOp*>  ops;
 };
+
+enum NetOpType {
+    NetAccept = 0,
+    NetSendMsg,
+    NetClose,
+    NetReadWrite
+};
+
 class AsyncNet :public EvCallBack , public EvTimeOutCallBack
 {
 public:
@@ -148,7 +157,7 @@ public:
             return -1;
         }
         m_handler.Start(max, 1.0, this);
-        AsyncNetOp* op = new AsyncNetOp(this, fd, 0, 0, 0);
+        AsyncNetOp* op = new AsyncNetOp(this, fd, NetAccept, 0, 0);
         m_handler.Notify((uint32_t)fd, this, op);
         return 0;
     };
@@ -169,8 +178,7 @@ public:
             return -1;
         }
         m_handler.Start(1, 1.0, this);
-        AsyncNetOp* op = new AsyncNetOp(this, fd, 3, m_cid, data);
-        LOG(INFO)<<op<<" "<<m_cid;
+        AsyncNetOp* op = new AsyncNetOp(this, fd, NetReadWrite, m_cid, data);
         m_handler.Notify((uint32_t)fd, this, op);
         m_cid++;
         return 0;
@@ -185,7 +193,7 @@ public:
         }
     };
     void  SendMsg(std::string & msg, uint64_t id, int fd){
-        AsyncNetOp* op = new AsyncNetOp(this, fd, 1, id);
+        AsyncNetOp* op = new AsyncNetOp(this, fd, NetSendMsg, id);
         HNetSendBuff * buff = new HNetSendBuff();
         buff->Swap(msg);
         op->m_send_buff.push_back(buff);
@@ -194,7 +202,7 @@ public:
         }
     };
     void CloseFd(uint64_t id, int fd){
-        AsyncNetOp* op = new AsyncNetOp(this, fd, 2, id);
+        AsyncNetOp* op = new AsyncNetOp(this, fd, NetClose, id);
         m_handler.Notify((uint32_t)fd, this, op);
     };
     int Notify(uint32_t fd, EvCallBack* back ,void* ptr){

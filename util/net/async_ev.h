@@ -161,7 +161,7 @@ private:
     EvQueueData**       m_queue;
     EvTimeOutCallBack*  m_time_back;
     float               m_time_out;
-    uint32_t		    m_queue_max;
+    uint32_t            m_queue_max;
     volatile uint64_t	m_read_id;
     volatile uint64_t	m_write_id;
     uint32_t            m_id;
