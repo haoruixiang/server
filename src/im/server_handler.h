@@ -7,6 +7,7 @@ class ConnSession
 public:
     ConnSession(){
         m_status = 0;
+        m_uid = 0;
     };
     ~ConnSession(){};
     int Status(){
@@ -15,11 +16,16 @@ public:
     bool IsLogin(){
         return m_status == 1;
     };
-    void SetLogin(){
+    void SetLogin(uint32_t uid){
         m_status = 1;
-    }
+        m_uid = uid;
+    };
+    uint32_t Uid(){
+        return m_uid;
+    };
 private:
-    int  m_status; 
+    int  m_status;
+    uint32_t m_uid;
 };
 
 enum{
@@ -49,64 +55,16 @@ public:
         return m_net.StartAcceptServer(this, ip, port, max);
     };
     virtual size_t OnMessage(uint32_t tid, AsyncConn* conn, const char* buff, size_t len){
-        int rsize = 0;
-        int bHeart = 0;
-        do{
-            if (len< sizeof(MsgHead)){
-                break;
-            }
-            MsgHead * ph = (MsgHead*)buff;
-            if (ph->m_type == IM_HEART){
-                rsize += sizeof(MsgHead);
-                buff += sizeof(MsgHead);
-                bHeart = 1;
-                len -= sizeof(MsgHead);
-                continue;
-            }
-            if ((len - sizeof(MsgHead)) < ph->m_len){
-                LOG(WARNING)<<"recv incomplete pkg slen:"<<len
-                    <<" tlen:"<<ph->m_len
-                    <<" version:"<<ph->m_version
-                    <<" type:"<<ph->m_type
-                    <<" identifier:"<<ph->m_identifier;
-                break;
-            }
-            rsize += sizeof(MsgHead);
-            rsize += ph->m_len;
-            len -= sizeof(MsgHead);
-            len -= ph->m_len;
-            buff += sizeof(MsgHead);
-            switch (ph->m_type){
-            case IM_MSG_REQ:
-                MsgReq(buff, ph->m_len);
-                break;
-            case IM_MSG_RSP:
-                MsgRsp(buff, ph->m_len);
-                break;
-            case IM_OP_REQ:
-                OpReq(buff, ph->m_len);
-                break;
-            case IM_OP_RSP:
-                OpRsp(buff, ph->m_len);
-                break;
-            default:
-                LOG(ERROR)<<"recv unknown msg";
-                //close socket
-            }
-        }while(true);
-        if (bHeart){
-            //response heart
-        }
-        return rsize;
+        return Process(tid, conn, buff, len);
     };
     virtual void OnConnect(uint32_t tid, AsyncConn* conn){
-        ConnSession * session = new ConnSession()
+        ConnSession * session = new ConnSession();
         conn->SetContext(session);
     };
     virtual void CloseConn(uint32_t tid, AsyncConn * conn){
         ConnSession * session = (ConnSession*)conn->GetDelContext();
         if (session->IsLogin()){
-            DelSession(tid, session);
+            DelSession(session, conn->GetId(), conn->GetFd());
         }
         delete session;
     };
@@ -114,32 +72,13 @@ public:
         //on time out
     };
 private:
-    void PushMessage(uint32_t uid, const char* buff, size_t len){
-        std::map<uint64_t, int> router;
-        {
-            std::lock_guard<std::mutex> lock(m_mutex);
-            std::map<uint32_t, std::map<uint64_t, int>>::iterator iter = m_sessions.find(uid);
-            if (iter != m_sessions.end()){
-                std::map<uint64_t, int>::iterator it = iter->second.begin();
-                for (; it!=iter->second.end(); it++){
-                    router[it->first] = it->second;
-                }
-            }   
-        }
-        std::map<uint64_t, int>::iterator it = router.begin();
-        for (; it != router.end(); it++){
-            SendToClientLoop(it->second, it->first, buff, len);
-        }
-    };
-    void DelSession(int fd, uint64_t id){
-        
-    };
-    void SendToClientLoop(int fd, uint64_t id, const char* buff, size_t len){
-        //
-    };
-    AmqpHandler      m_mq;     //mq
+    void MsgReq(const char* buff, int len);
+    size_t Process(uint32_t tid, AsyncConn* conn, const char* buff, size_t len);
+    void PushMessage(uint32_t uid, const char* buff, size_t len);
+    void DelSession(ConnSession* session, uint64_t id, int fd);
+    void SetSessionRoute(uint32_t uid, ConnSession* session, uint64_t id, int fd);
+    void SendToClientLoop(int fd, uint64_t id, const char* buff, size_t len);
     AsyncNet  	     m_net;    //tcp
-    ShmqHandler      m_shmq;
     std::mutex       m_mutex;
     std::map<uint32_t, std::map<uint64_t, int>> m_sessions;
 };
