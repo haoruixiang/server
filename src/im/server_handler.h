@@ -72,7 +72,7 @@ public:
         //on time out
     };
 private:
-    void MsgReq(const char* buff, int len);
+    void MsgReq(AsyncConn* conn, const char* buff, int len);
     size_t Process(uint32_t tid, AsyncConn* conn, const char* buff, size_t len);
     void PushMessage(uint32_t uid, const char* buff, size_t len);
     void DelSession(ConnSession* session, uint64_t id, int fd);

@@ -63,6 +63,7 @@ size_t NetServerHandler::Process(uint32_t tid, AsyncConn* conn, const char* buff
         len -= sizeof(MsgHead);
         len -= ph->m_len;
         buff += sizeof(MsgHead);
+        /*
         switch (ph->m_type){
             case IM_MSG_REQ:
                 if (!MsgReq(conn, buff, ph->m_len)){
@@ -87,7 +88,7 @@ size_t NetServerHandler::Process(uint32_t tid, AsyncConn* conn, const char* buff
             default:
                 LOG(ERROR)<<"recv unknown msg:"<<tid;
                 return -1;
-        }
+        }*/
     }while(true);
     if (bHeart){
         //response heart

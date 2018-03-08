@@ -9,7 +9,7 @@ COMMON_DIR=./gen-cpp
 HANDLERS_DIR=./handlers
 CXX=g++-4.8 -std=c++11 #gcc -lstdc++#g++-4.8
 CFLAGS:= -Wall -g -Werror -Wno-deprecated -I.. -fPIC -static
-LDFLAGS:= -lutil_json -lamqpcpp -lpthread -lev -lglog
+LDFLAGS:= -lutil_json -lutil_rsa -lpthread -lev -lglog -lcrypto -ldl
 
 NAME:=$(shell /bin/pwd | /usr/bin/awk -F / '{print $$NF}')
 TARGET:=$(NAME)#$(BUILDDIR)/$(NAME)/$(NAME)

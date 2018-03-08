@@ -41,10 +41,7 @@ bool  EasyRSA::SetPublicKey(const std::string & key)
     }
     m_pub_rsa = PEM_read_bio_RSAPublicKey(keybio, NULL, NULL, NULL);
     if (!m_pub_rsa){
-        ERR_load_crypto_strings();  
-        char errBuf[512];  
-        ERR_error_string_n(ERR_get_error(), errBuf, sizeof(errBuf));  
-        LOG(ERROR)<<"PEM_read_bio_RSA_PUBKEY false:"<<errBuf;
+        LOG(ERROR)<<"PEM_read_bio_RSA_PUBKEY false";
         return false;
     }
     BIO_free_all(keybio);
@@ -96,13 +93,10 @@ std::string EasyRSA::Decode(std::string & msg)
         char tmsg[rsa_len+1];
         memset(tmsg, 0, sizeof(tmsg));
         int move = i*rsa_len;
-        LOG(INFO)<<"len:"<<msg.size()<<" move:"<<move;
-        //int tlen = rsa_len;
         if ((int)(msg.length() - move) > rsa_len ){
             memcpy(tmsg, cp + move, rsa_len);
         } else {
             memcpy(tmsg, cp + move, msg.length() - move);
-            //tlen = msg.length() - move;
         }
         char de[rsa_len+1];
         memset(de, 0, rsa_len + 1);
@@ -111,7 +105,6 @@ std::string EasyRSA::Decode(std::string & msg)
             LOG(ERROR)<<"RSA_private_decrypt error";
             return rmsg;
         }
-        LOG(INFO)<<de;
         rmsg.append(de, len);
     }
     return rmsg;
