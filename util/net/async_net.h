@@ -20,8 +20,17 @@ public:
         m_id = id;
     };
     virtual ~AsyncConn(){};
-    void* GetContext(){return m_context;};
-    void SetContext(void* ptr){m_context = ptr;};
+    void* GetContext(){
+        return m_context;
+    };
+    void *GetDelContext(){
+        void * p = m_context;
+        m_context = 0;
+        return p;
+    };
+    void SetContext(void* ptr){
+        m_context = ptr;
+    };
     int   GetFd(){return m_fd;};
     uint64_t GetId(){return m_id;};
     uint64_t AddId(){return m_id++;};
@@ -324,7 +333,11 @@ private:
         }
         if (rt > 0 && m_back ){
             size_t len = m_back->OnMessage(op->m_tid, op, op->m_read_buff->Peek(), op->m_read_buff->ReadableBytes());
-            LOG(INFO)<<"read fd:"<<op->GetFd()<<" len:"<<len;
+            if (len < 0){
+                LOG(ERROR)<<"OnMessage error:"<<errno<<" "<<op<<" "<<op->GetFd();
+                CloseOp(op);
+                return ;
+            }
             op->m_read_buff->Retrieve(len);
         }
     };
