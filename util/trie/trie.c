@@ -180,7 +180,7 @@ void* trieGetAndDel(Htrie *h, const char* key, int keyLen)
         //if (p->size == 0 && p->) //free()
         return c;
     }
-    return trieGet(p, ++key, --keyLen);
+    return trieGetAndDel(p, ++key, --keyLen);
 }
 
 int main(int argv, char** argc)
