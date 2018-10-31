@@ -15,7 +15,7 @@ RM=/bin/rm -f
 MV=/bin/mv -f
 MKDIR=/bin/mkdir -p
 
-CXX=g++#g++-4.8
+CXX=g++-4.8
 
 SRC:= $(wildcard ./*.cpp)
 CSRC:=$(wildcard ./*.c)
@@ -31,8 +31,8 @@ DEP:=$(OBJS:%.o=%.d)
 CDEP:=$(COBJS:%.o=%d)
 CCDEP:=$(CCOBJS:%.o=%d)
 
-INCLUDES:= -I ${INCLUDE_PATH} -I ../../include
-CFLAGS:= $(BUILD_INC) -Wall -ggdb -fPIC -std=c++0x
+INCLUDES:= -I ${INCLUDE_PATH} -I ../../include -I ../glog/src
+CFLAGS:= $(BUILD_INC) -Wall -ggdb -fPIC -std=c++11
 LD_LIB= $(STATIC_LIB) $(BUILD_LIB)
 
 TAGT=$(LIB_PATH)/$(MODNAME).a

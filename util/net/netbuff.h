@@ -1,11 +1,12 @@
 #ifndef __H_NET_BUFF_H
 #define __H_NET_BUFF_H
 #include <sys/uio.h>
-
+#include <vector>
+#include <string>
 class HNetBuff
 {
 public:
-    HNetBuff():buffer(1024),reader(0),writer(0){
+    HNetBuff():buffer(1024),reader(0),writer(0),id(0),ptr(0){
     };
     ~HNetBuff(){
     };
@@ -79,6 +80,8 @@ public:
     std::vector<char>  buffer;
     size_t             reader;
     size_t             writer;
+    uint64_t           id;
+    void*              ptr;
 };
 
 #endif
