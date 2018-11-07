@@ -22,13 +22,16 @@ public:
 class NotifyQueue
 {
 public:
-    NotifyQueue(int queue_max = 1280);
-    virtual ~NotifyQueue(){};
+    NotifyQueue(int queue_max = 128000);
+    virtual ~NotifyQueue();
     virtual void OnTimeOut(){};
-    void Start(float time_out = 10.0);
+    void Start(float time_out, int sid);
     int  Notify(NotifyQueueCallBack back, void* ptr, void * data);
     struct ev_loop* Loop(){
         return m_loop;
+    };
+    int Sid(){
+        return m_sid;
     };
 private:
     static void NotifyCallBack(struct ev_loop* loop, struct ev_io* ev, int events){
@@ -43,11 +46,9 @@ private:
             p->OnTimeOut();
         }
     }
-    void RunLoop(){
-        ev_run(m_loop, 0);
-    }
+    void RunLoop();
     void OnNotify();
-
+    int                 m_sid;
     std::thread*        m_worker;
     ev_io               m_watcher;
     ev_timer            m_twatcher;
@@ -59,6 +60,7 @@ private:
     uint32_t            m_queue_max;
     volatile uint64_t   m_read_id;
     volatile uint64_t   m_write_id;
+    volatile uint64_t   m_read_lock;
     uint32_t            m_id;
     void*               m_ptr;
 };

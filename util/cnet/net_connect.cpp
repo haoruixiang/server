@@ -4,8 +4,12 @@
 NetConnect::~NetConnect()
 {
     close(m_fd);
-    ev_io_stop(m_loop, &m_swatcher);
-    ev_io_stop(m_loop, &m_rwatcher);
+    if (m_send_state == 1){
+        ev_io_stop(m_loop, &m_swatcher);
+    }
+    if (m_recv_state == 1){
+        ev_io_stop(m_loop, &m_rwatcher);
+    }
 }
 
 void NetConnect::StartAccept()
@@ -14,26 +18,39 @@ void NetConnect::StartAccept()
     m_rwatcher.data = this;
     ev_io_set(&m_rwatcher, m_fd, EV_READ);
     ev_io_start(m_loop, &m_rwatcher);
+    m_recv_state = 1;
 }
 
 void NetConnect::AddSend(const std::string & msg)
 {
     m_send_buff.Append(msg);
     if (m_send_state == 0){
-        ev_init(&m_rwatcher, ReadCallBack);
-        m_rwatcher.data = this;
-        ev_io_set(&m_rwatcher, m_fd, EV_READ);
-        ev_io_start(m_loop, &m_rwatcher);
+        ev_init(&m_swatcher, WriteCallBack);
+        m_swatcher.data = this;
+        ev_io_set(&m_swatcher, m_fd, EV_WRITE);
+        ev_io_start(m_loop, &m_swatcher);
         m_send_state = 1;
     }
 }
 
+int32_t NetConnect::Ip()
+{
+    struct sockaddr_in peeraddr;
+    bzero(&peeraddr, sizeof peeraddr);
+    socklen_t addrlen = static_cast<socklen_t>(sizeof peeraddr);
+    if (::getpeername(m_fd, (sockaddr*)&peeraddr, &addrlen) < 0) {
+        return 0;
+    }
+    return peeraddr.sin_addr.s_addr;
+}
+
 void NetConnect::StartRecv()
 {
-    ev_init(&m_swatcher, WriteCallBack);
-    m_swatcher.data = this;
-    ev_io_set(&m_swatcher, m_fd, EV_WRITE);
-    ev_io_start(m_loop, &m_swatcher);
+    ev_init(&m_rwatcher, ReadCallBack);
+    m_rwatcher.data = this;
+    ev_io_set(&m_rwatcher, m_fd, EV_READ);
+    ev_io_start(m_loop, &m_rwatcher);
+    m_recv_state = 1;
 }
 
 void NetConnect::Read()
@@ -43,6 +60,7 @@ void NetConnect::Read()
         if (errno != EAGAIN || errno != EWOULDBLOCK || rt == -8888){
             LOG(ERROR)<<"read error:"<<errno<<" id:"<<m_id<<" fd:"<<m_fd;
             ev_io_stop(m_loop, &m_rwatcher);
+            m_recv_state = 0;
             if (m_back){
                 m_back->OnCloseConn(this);
             }
@@ -51,6 +69,7 @@ void NetConnect::Read()
     }
     if (rt > 0) {
         ev_io_stop(m_loop, &m_rwatcher);
+        m_recv_state = 0;
         if (m_back){
             m_back->OnRecv(this);
         }

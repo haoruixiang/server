@@ -23,84 +23,85 @@ typedef struct {
 class AmqpConnCallBack
 {
 public:
-    virtual void SendData(std::string& msg, uint64_t id);
-    virtual void OnConnError(uint64_t id);
-    virtual void OnChannelReady(AMQP::Channel* c);
-    virtual void OnMessage(uint64_t id, const AMQP::Message &message, uint64_t deliveryTag, bool redelivered);
+    AmqpConnCallBack();
+    ~AmqpConnCallBack();
+    virtual void AmqpSendData(std::string& msg, uint64_t id){};
+    virtual void AmqpOnConnError(uint64_t id){};
+    virtual void AmqpOnChannelReady(AMQP::Channel* c){};
+    virtual void AmqpOnMessage(uint64_t id, int ch, const AMQP::Message &message, uint64_t deliveryTag, bool redelivered){};
 };
 
-class AmqpConn :public AMQP::ConnectionHandler
+class AmqpChannelBack
+{
+public:
+    AmqpChannelBack(){};
+    virtual ~AmqpChannelBack(){};
+    virtual void OnMessage(int ch, const AMQP::Message &message, uint64_t deliveryTag, bool redelivered){};
+    virtual void OnError(const char* message){};
+};
+
+class AmqpChannel
+{
+public:
+    AmqpChannel(AMQP::Connection * c, AMQP_QUEUE* queue, AmqpChannelBack * back, const std::string & ex, int flage = 0, int index = 0);
+    virtual ~AmqpChannel();
+    void Init();
+    void Error(const char* message);
+    void Ready();
+    bool ack(uint64_t deliveryTag);
+    bool Publish(const std::string &exchange, const std::string &routingKey, const std::string &message);
+    bool Publish(const std::string &exchange, const std::string &routingKey, const AMQP::Message &message);
+    AmqpChannelBack* m_back;
+    AMQP::Channel*   m_ch;
+    AMQP_QUEUE*      m_queue;
+    std::string      m_ex;
+    int              m_flage;
+    int              m_index;
+};
+
+class AmqpConn :public AMQP::ConnectionHandler,
+                public AmqpChannelBack
 {
 public:
     AmqpConn(AmqpConnCallBack *p, AMQP_CONFIG* conf, uint64_t id);
+    AmqpConn();
     virtual ~AmqpConn();
-    void  Clear();
+    void  add(AmqpConnCallBack *p, AMQP_CONFIG* conf, uint64_t id);
     void  Close();
     void  Init(int flage = 0);
     int   Parse(const char* buff, int len);
+    bool  State();
+    bool  ack(int ch, uint64_t deliveryTag);
+    bool  Publish(int ch, const std::string &exchange, const std::string &routingKey, const std::string &message);
+    bool  Publish(int ch, const std::string &exchange, const std::string &routingKey, const AMQP::Message &message);
+    uint64_t Id(){return m_id;};
+    bool  IsTimeOut(int tv){
+        if (m_connection && time(0) - m_read_time > tv){
+            return true;
+        }
+        return false;
+    };
+    AMQP_CONFIG* getConf(){
+        return m_conf;
+    };
 private:
-    virtual uint16_t onNegotiate(AMQP::Connection *connection, uint16_t interval){
-        return 5;
-    }
-    virtual void onHeartbeat(AMQP::Connection *connection) {
-        connection->heartbeat();
-    };
-    virtual void OnMessage(const AMQP::Message &message, uint64_t deliveryTag, bool redelivered){
-        if (m_back){
-            m_back->OnMessage(m_id, message, deliveryTag, redelivered);
-        }
-    };
-    virtual void onData(AMQP::Connection* connection, const char* data, size_t len){
-        if (m_back){
-            std::string msg(data, len);
-            m_back->SendData(msg, m_id);
-        }
-    };
-    virtual void onConnected(AMQP::Connection* connection){
-        m_read_time = time(0);
-    };
-    virtual void onError(AMQP::Connection* connection, const char* message){
-        if (m_back){
-            m_back->OnConnError(m_id);
-        }
-    };
-    virtual void onClose(AMQP::Connection* connection){
-        if (m_back){
-            m_back->OnConnError(m_id);
-        }
-    };
-    uint64_t         m_id;
+    virtual uint16_t onNegotiate(AMQP::Connection *connection, uint16_t interval);
+    virtual void onHeartbeat(AMQP::Connection *connection);
+    virtual void OnMessage(int ch, const AMQP::Message &message, uint64_t deliveryTag, bool redelivered);
+    virtual void OnError(const char* message);
+    virtual void onData(AMQP::Connection* connection, const char* data, size_t len);
+    virtual void onConnected(AMQP::Connection* connection);
+    virtual void onError(AMQP::Connection* connection, const char* message);
+    virtual void onClose(AMQP::Connection* connection);
+    
+    AmqpConnCallBack* m_back;
+    AMQP_CONFIG*      m_conf;
+    uint64_t          m_id;
     AMQP::Connection  *m_connection;
-    //std::vector<AmqpChannel*> m_channel;
-    AmqpConnCallBack*    m_back;
-    AMQP_CONFIG*     m_conf;
-    time_t           m_read_time;
-    time_t           m_connect_time;
-};
-
-class AmqpHandler : public NetMessageCallBack,
-                    public AmqpConnCallBack
-{
-public:
-    AmqpHandler():m_manger(this){
-    };
-    ~AmqpHandler();
-    void Start();
-    int  AddAmqp(AMQP_CONFIG* conf);
-private:
-    virtual void SendData(std::string& msg, uint64_t id);
-    virtual void OnConnError(uint64_t id);
-    virtual void OnChannelReady(AMQP::Channel* c);
-    virtual void OnMessage(uint64_t id, const AMQP::Message &message, uint64_t deliveryTag, bool redelivered);
-private:
-    virtual void OnTimeByInterval();
-    virtual void OnMessage(NetConnect* conn);
-    virtual void OnClose(NetConnect* conn);
-    virtual void OnConnect(NetConnect* conn);
-private:
-    NetManager  m_manger;
-    uint64_t    m_id;
-    std::map<uint64_t, AmqpConn*> m_conns;
+    std::vector<AmqpChannel*> m_channel;
+    time_t            m_read_time;
+    time_t            m_connect_time;
+    std::mutex        m_lock;
 };
 
 #endif
