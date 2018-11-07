@@ -1,19 +1,23 @@
 #ifndef  _SHMQ_HANDLER_H
 #define  _SHMQ_HANDLER_H
-#include "async_ev.h"
 #include "hdc_shm_queue.h"
 #include "hdc_memery.h"
-
-typedef struct {
-    std::string      m_queue;
-    uint32_t         m_max_size;
-    std::vector<std::string> m_bind_keys;
-}SHM_QUEUE;
+#include "notify_queue.h"
+#include <vector>
+#include <map>
+class ShmMessageCallBack
+{
+public:
+    ShmMessageCallBack(){};
+    ~ShmMessageCallBack(){};
+    virtual void OnMessage(int tid, const std::string &route_key, 
+        const std::string &replyto, const std::string &correlation_id, std::string &body){};
+};
 
 class ShmqOp
 {
 public:
-    ShmqOp(std::string & q):queue(q),id(0){
+    ShmqOp(const std::string & q):queue(q),id(0){
     };
     ~ShmqOp(){};
     std::string queue;
@@ -24,9 +28,7 @@ public:
 class ShmBuff
 {
 public:
-    ShmBuff(){
-        size = 0;
-        buff = 0;
+    ShmBuff():buff(0),size(0){
     };
     ~ShmBuff(){
         if (buff){
@@ -44,107 +46,28 @@ public:
     int    size;
 };
 
-class ShmqHandler : public EvCallBack , public EvTimeOutCallBack
+class ShmqHandler : public NotifyQueue
 {
 public:
-    ShmqHandler(){
-        m_ptr = 0;
-        m_notice_id = 1;
-        m_max_thread = 0;
-    };
-    ~ShmqHandler(){
-    };
-    int Consume(std::string &key, size_t size, 
-                std::vector<SHM_QUEUE*>& queues, 
-                uint32_t max_thread = 4){
-        if (max_thread<=1){
-            return -1;
-        }
-        m_ptr = (char*)ShmPorint(key.c_str(), size);
-        if (!m_ptr){
-            return -1;
-        }
-        if (shm_init(m_ptr, size)<0){
-            return -1;
-        }
-        for (size_t i=0; i<queues.size(); i++){
-            ShmqOp * op = new ShmqOp(queues[i]->m_queue);
-            if (shm_queue_declare(m_ptr, 
-                                    queues[i]->m_queue.c_str(),
-                                    queues[i]->m_queue.length(),
-                                    queues[i]->m_max_size, op->id)<0){
-                delete op;
-                return -1;
-            }
-            for (size_t j=0; j<queues[i]->m_bind_keys.size(); j++){
-                if (shm_queue_bind(m_ptr,
-                                queues[i]->m_queue.c_str(),
-                                queues[i]->m_queue.length(),
-                                queues[i]->m_bind_keys[j].c_str(),
-                                queues[i]->m_bind_keys[j].length())<0){
-                    delete op;
-                    return -1;
-                }
-            }
-            m_qs.push_back(op);
-        }
-        for (uint32_t i=0; i<max_thread; i++){
-            ShmBuff * b = new ShmBuff();
-            m_buff.push_back(b);
-        }
-        m_handler.Start(max_thread, 0.001, this);
-        m_max_thread = max_thread;
-        return 0;
-    };
-    void Notify(){
-        uint32_t id=1;
-        for (size_t i=0; i < m_qs.size(); i++){
-            m_handler.Notify(id, this, m_qs[i]);
-            id ++;
-            if (id>=m_max_thread){
-                id = 1;
-            }
-        }
-    };
-    void OnMessage(const char* buff, size_t len, const char* queue, size_t qlen){
+    ShmqHandler(ShmMessageCallBack* back);
+    ~ShmqHandler();
+    bool InitMemery(const std::string &key, size_t size);
+    bool AddQueue(const std::string &queue, uint32_t max_size, std::vector<std::string> &keys);
+    bool Publish(const std::string & key, const std::string & replyto, const std::string &correlation_id, std::string & msg);
+    void OnMessage(const char* buff, size_t len, const char* queue, size_t qlen);
+    virtual void OnTimeOut(){
+        doConsume();
     };
 private:
-    virtual void CallBack(uint32_t id, void * data){
-        ShmqOp* op = (ShmqOp*)data;
-        if (!m_buff[id]->buff){
-            m_buff[id]->Broaden();
-        }
-        do{
-            int rt = shm_queue_pop_cas(m_ptr, op->queue.c_str(), 
-                    op->queue.size(),
-                    op->id,
-                    m_buff[id]->buff, m_buff[id]->size);
-            if (rt <= 0){
-                if (rt == -103){
-                    m_buff[id]->Broaden();
-                    continue;
-                }
-                break;
-            }
-            OnMessage(m_buff[id]->buff, rt, op->queue.c_str(), op->queue.size());
-        }while(true);
-    };
-    virtual void TimeCallBack(){
-        for (size_t i=0; i < m_qs.size(); i++){
-            if (shm_queue_has_message(m_ptr, m_qs[i]->id)){
-                m_handler.Notify(m_notice_id, this, m_qs[i]);
-                m_notice_id++;
-                if (m_notice_id>=m_max_thread){
-                    m_notice_id = 1;
-                }
-            }   
-        }
-    };
-    char*           m_ptr;
-    std::vector<ShmqOp*> m_qs;
-    std::vector<ShmBuff*> m_buff;
-    AsyncEvHandler  m_handler;
-    uint32_t        m_max_thread;
-    uint32_t        m_notice_id;
+    void doConsume();
+    void parse(char* buff, size_t size, const std::string & queue);
+    char*                 m_ptr;
+    ShmMessageCallBack   *m_back;
+    volatile uint8_t      m_exit;
+    std::vector<ShmqOp*>  m_qs;
+    ShmBuff  m_buff;
+    std::mutex            m_lock;
+    std::map<std::string, unsigned int> m_key_ids;   
 };
+
 #endif
