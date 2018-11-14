@@ -52,6 +52,7 @@ int NotifyQueue::Notify(NotifyQueueCallBack back, void* ptr, void * data)
         m_queue[id]->m_back = back;
         m_queue[id]->m_data = data;
         m_queue[id]->m_ptr = ptr;
+        m_queue[id]->m_state = 1;
         for(;;){
             uint64_t clid = m_read_lock;
             if (!__sync_bool_compare_and_swap(&m_read_lock, clid, clid+1)){
@@ -80,14 +81,18 @@ void NotifyQueue::OnNotify()
     do{
         NotifyQueueData* back = 0;
         {
-            if (m_read_lock-1 > m_read_id){
-                int id = m_read_id % m_queue_max;
+            int id = m_read_id % m_queue_max;
+            if (m_read_lock-1 > m_read_id && m_queue[id]->m_state == 1){
                 back = m_queue[id];
                 m_read_id++;
             }
         }
         if (back && back->m_back){
             back->m_back(back->m_ptr, back->m_data);
+            back->m_state = 0;
+            back->m_data = 0;
+            back->m_back = 0;
+            back->m_ptr = 0;
         }else{
             break;
         }

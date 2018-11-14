@@ -11,12 +11,13 @@ class NotifyQueueData
 {
 public:
     NotifyQueueData(NotifyQueueCallBack back, void* ptr, void*data):
-        m_back(back),m_ptr(ptr),m_data(data)
+        m_back(back),m_ptr(ptr),m_data(data),m_state(0)
     {};
     ~NotifyQueueData(){};
     NotifyQueueCallBack m_back;
     void*               m_ptr;
     void*               m_data;
+    volatile int        m_state;
 };
 
 class NotifyQueue

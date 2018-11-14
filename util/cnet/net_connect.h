@@ -37,6 +37,19 @@ public:
         m_loop(loop),
         m_data(0)
     {
+        m_prev = 0;
+        m_next = 0;   
+    };
+    void init(struct ev_loop* loop,uint64_t id, int fd, NetConnectCallBack* back){
+        m_send_state = 0;
+        m_recv_state = 0;
+        m_back = back;
+        m_id = id;
+        m_fd = fd;
+        m_loop = loop;
+        m_data = 0;
+        m_prev = 0;
+        m_next = 0;
     };
     virtual ~NetConnect();
     void StartAccept();

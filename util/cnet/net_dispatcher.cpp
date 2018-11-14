@@ -237,11 +237,6 @@ void NetManager::doSend(uint64_t id, std::string & msg)
 void NetManager::doAddFd(int fd, uint64_t id)
 {
     NetConnect *conn = new NetConnect(Loop(), id, fd, this);
-    if (!conn){
-        LOG(ERROR)<<"doAddFd new false id:"<<id;
-        close(fd);
-        return;
-    }
     conn->m_prev = 0;
     conn->m_next = m_head;
     if (m_head){
@@ -258,11 +253,6 @@ void NetManager::doAddFd(int fd, uint64_t id)
 void NetManager::doAddAccept(int fd, uint64_t id)
 {
     NetConnect *conn = new NetConnect(Loop(), id, fd, this);
-    if (!conn){
-        LOG(ERROR)<<"doAddFd new false id:"<<id;
-        close(fd);
-        return;
-    }
     conn->m_prev = 0;
     conn->m_next = m_head;
     if (m_head){
@@ -293,6 +283,7 @@ void NetManager::doClose(uint64_t id)
                 next->m_prev = prev;
             }
         }
+        c->m_next = 0;
         delete c;
     }else{
         LOG(ERROR)<<"not find id["<<id<<"] tid["<<Sid()<<"]";

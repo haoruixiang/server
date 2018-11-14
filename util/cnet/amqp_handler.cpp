@@ -1,5 +1,4 @@
 #include "amqp_handler.h"
-#include <glog/logging.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -108,7 +107,6 @@ AmqpConn::AmqpConn():m_back(0),m_conf(0),m_id(0),m_connection(0)
 AmqpConn::~AmqpConn()
 {
     if (m_connection){
-        LOG(WARNING)<<"AmqpConn["<<m_id<<"] exit now";
         Close();
     }
 }
@@ -163,7 +161,6 @@ void AmqpConn::onConnected(AMQP::Connection* connection)
 
 void AmqpConn::onError(AMQP::Connection* connection, const char* message)
 {
-    LOG(ERROR)<<message;
     if (m_back){
         m_back->AmqpOnConnError(m_id);
     }
@@ -171,7 +168,6 @@ void AmqpConn::onError(AMQP::Connection* connection, const char* message)
 
 void AmqpConn::OnError(const char* message)
 {
-    LOG(ERROR)<<"OnError:"<<message;
 }
 
 void AmqpConn::onClose(AMQP::Connection* connection)
